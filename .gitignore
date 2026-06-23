@@ -1,0 +1,21 @@
+.gocache/
+testdata/
+
+# Build outputs
+/valkey-ftdcstat
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.out
+*.test
+
+# Coverage and profiling
+*.coverprofile
+coverage.out
+cpu.prof
+mem.prof
+
+# Editor/OS noise
+.DS_Store
