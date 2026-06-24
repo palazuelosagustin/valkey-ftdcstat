@@ -12,25 +12,34 @@ go build -o valkey-ftdcstat ./cmd/valkey-ftdcstat
 ## Usage
 
 ```bash
-valkey-ftdcstat <path-to-diagnostic-data-directory> [--view summary|memory|clients|cpu|persistence|replication|commandstats|host] [--interval N] [--json]
+valkey-ftdcstat <path-to-diagnostic-data-directory> [--view VIEW] [--interval N] [--verbose] [--json]
 ```
 
-`--json` emits the raw capture data as valid JSON for debugging. It does not derive rows, build headers, or calculate deltas.
+Views:
 
-Default view:
+```text
+summary       compact rollup across server, memory, clients, host, and replication
+server        throughput, hit rate, errors, and connection activity
+memory        allocation pressure and eviction/expiry rates
+clients       connection counts and throughput
+cpu           Valkey and host CPU
+persistence   RDB/AOF state and slowlog length
+replication   role, replicas, and replication offset
+commandstats  command mix over the full capture
+host          vmstat-style host metrics
+network       Valkey and host network throughput
+latency       LATENCY LATEST event gauges
+```
+
+Examples:
 
 ```bash
 valkey-ftdcstat diagnostic.data --view summary
-```
-
-Focused host vmstat-style view:
-
-```bash
-valkey-ftdcstat diagnostic.data --view host
-```
-
-Command mix over the full capture:
-
-```bash
+valkey-ftdcstat diagnostic.data --view server --interval 300
+valkey-ftdcstat diagnostic.data --view network --verbose
+valkey-ftdcstat diagnostic.data --view latency --json
 valkey-ftdcstat diagnostic.data --view commandstats
 ```
+
+`--verbose` expands columns for `memory`, `clients`, `replication`, `host`, and
+`network` views.

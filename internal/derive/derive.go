@@ -20,14 +20,23 @@ const (
 	pathStatsOutKB      = "valkey.info.stats.instantaneous_output_kbps"
 	pathStatsExpired    = "valkey.info.stats.expired_keys"
 	pathStatsEvicted    = "valkey.info.stats.evicted_keys"
+	pathStatsRejected   = "valkey.info.stats.rejected_connections"
+	pathStatsErrors     = "valkey.info.stats.total_error_replies"
 	pathMemUsed         = "valkey.info.memory.used_memory"
 	pathMemRSS          = "valkey.info.memory.used_memory_rss"
 	pathMemMax          = "valkey.info.memory.maxmemory"
+	pathMemFrag         = "valkey.info.memory.mem_fragmentation_ratio"
+	pathMemLua          = "valkey.info.memory.used_memory_lua"
+	pathMemScripts      = "valkey.info.memory.number_of_cached_scripts"
+	pathMemDefrag       = "valkey.info.memory.active_defrag_running"
 	pathClientsConn     = "valkey.info.clients.connected_clients"
 	pathClientsBlocked  = "valkey.info.clients.blocked_clients"
+	pathClientsPubsub   = "valkey.info.clients.pubsub_clients"
 	pathReplRole        = "valkey.info.replication.role"
 	pathReplSlaves      = "valkey.info.replication.connected_slaves"
 	pathReplOffset      = "valkey.info.replication.master_repl_offset"
+	pathReplBacklogActive = "valkey.info.replication.repl_backlog_active"
+	pathReplBacklogSize   = "valkey.info.replication.repl_backlog_size"
 	pathCPUUser         = "valkey.info.cpu.used_cpu_user"
 	pathCPUSys          = "valkey.info.cpu.used_cpu_sys"
 	pathRDB             = "valkey.info.persistence.rdb_bgsave_in_progress"
@@ -37,6 +46,8 @@ const (
 	pathHostLoad1       = "host.loadavg.1m"
 	pathHostMemAvail    = "host.memory.MemAvailable.mb"
 	pathHostDiskstats   = "host.disk.diskstats"
+	pathHostNetDev      = "host.network.net_dev"
+	pathHostVmRSS       = "host.process.status.VmRSS.bytes"
 	pathProcessID       = "valkey.info.server.process_id"
 	pathRunID           = "valkey.info.server.run_id"
 	pathUptime          = "valkey.info.server.uptime_in_seconds"
@@ -46,6 +57,7 @@ type Options struct {
 	View           string
 	Interval       time.Duration
 	GapThreshold   time.Duration
+	Verbose        bool
 	Metadata       model.Metadata
 	TimeLocation   *time.Location
 }
@@ -114,7 +126,7 @@ func BuildStream(path string, files []discovery.MetricFile, metadata model.Metad
 	if len(samples) == 0 {
 		return Report{}, fmt.Errorf("no samples found")
 	}
-	return finalizeReport(path, filePaths(files), metadata, samples, first, last, rows, opts)
+	return finalizeReport(path, filePaths(files), metadata, samples, first, last, rows, opts, streamer)
 }
 
 func BuildFromReader(path string, files []discovery.MetricFile, metadata model.Metadata, opts Options) (Report, error) {
@@ -144,7 +156,7 @@ func BuildFromReader(path string, files []discovery.MetricFile, metadata model.M
 	if len(samples) == 0 {
 		return Report{}, fmt.Errorf("no samples found")
 	}
-	return finalizeReport(path, filePaths(files), metadata, samples, first, last, rows, opts)
+	return finalizeReport(path, filePaths(files), metadata, samples, first, last, rows, opts, streamer)
 }
 
 func buildFromSamples(path string, files []string, metadata model.Metadata, samples []model.MetricSample, opts Options) (Report, error) {
@@ -155,10 +167,10 @@ func buildFromSamples(path string, files []string, metadata model.Metadata, samp
 			rows = append(rows, row)
 		}
 	}
-	return finalizeReport(path, files, metadata, samples, samples[0], samples[len(samples)-1], rows, opts)
+	return finalizeReport(path, files, metadata, samples, samples[0], samples[len(samples)-1], rows, opts, streamer)
 }
 
-func finalizeReport(path string, files []string, metadata model.Metadata, samples []model.MetricSample, first, last model.MetricSample, rows []Row, opts Options) (Report, error) {
+func finalizeReport(path string, files []string, metadata model.Metadata, samples []model.MetricSample, first, last model.MetricSample, rows []Row, opts Options, streamer *Streamer) (Report, error) {
 	report := Report{
 		View:        opts.View,
 		Path:        path,
@@ -166,9 +178,13 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 		SampleCount: len(samples),
 		Start:       samples[0].Time,
 		End:         samples[len(samples)-1].Time,
-		Columns:     viewColumns(opts.View, opts),
 		Metadata:    metadata,
 		Header:      buildHeader(last),
+	}
+	if opts.View == "latency" && streamer != nil {
+		report.Columns = latencyColumns(streamer.LatencyEvents())
+	} else {
+		report.Columns = viewColumns(opts.View, opts)
 	}
 	switch opts.View {
 	case "commandstats":
@@ -188,11 +204,16 @@ type Streamer struct {
 	printedProcess bool
 	prev           model.MetricSample
 	havePrev       bool
+	latencyEvents  map[string]struct{}
 }
 
 func NewStreamer(opts Options) *Streamer {
 	opts = normalizeOptions(opts, opts.Metadata)
-	return &Streamer{opts: opts}
+	return &Streamer{opts: opts, latencyEvents: map[string]struct{}{}}
+}
+
+func (s *Streamer) LatencyEvents() []string {
+	return sortedLatencyEvents(s.latencyEvents)
 }
 
 func (s *Streamer) Add(cur model.MetricSample) (Row, bool) {
@@ -227,7 +248,8 @@ func (s *Streamer) Add(cur model.MetricSample) (Row, bool) {
 		row.ProcessMarker = processMarker("restart detected", cur, s.opts.TimeLocation)
 	}
 	reset := row.Marker != "" || restarted
-	fillRow(&row, calc, s.opts.View, reset)
+	fillRow(&row, calc, s.opts, reset)
+	mergeLatencyEvents(s.latencyEvents, cur)
 	s.lastRendered = cur.Time
 	return row, true
 }
@@ -270,22 +292,43 @@ func (c calculator) delta(path string) (float64, bool) {
 	return cur - prev, true
 }
 
-func fillRow(row *Row, c calculator, view string, reset bool) {
-	switch view {
+func fillRow(row *Row, c calculator, opts Options, reset bool) {
+	switch opts.View {
 	case "summary":
 		fillSummary(row, c, reset)
+	case "server":
+		fillServer(row, c, reset)
 	case "memory":
 		fillMemory(row, c, reset)
+		if opts.Verbose {
+			fillMemoryVerbose(row, c)
+		}
 	case "clients":
 		fillClients(row, c, reset)
+		if opts.Verbose {
+			fillClientsVerbose(row, c, reset)
+		}
 	case "cpu":
 		fillCPU(row, c, reset)
 	case "persistence":
 		fillPersistence(row, c, reset)
 	case "replication":
 		fillReplication(row, c, reset)
+		if opts.Verbose {
+			fillReplicationVerbose(row, c)
+		}
 	case "host":
 		fillHost(row, c, reset)
+		if opts.Verbose {
+			fillHostVerbose(row, c)
+		}
+	case "network":
+		fillNetwork(row, c, reset)
+		if opts.Verbose {
+			fillNetworkVerbose(row, c, reset)
+		}
+	case "latency":
+		fillLatency(row, c)
 	}
 }
 
@@ -294,9 +337,16 @@ func fillSummary(row *Row, c calculator, reset bool) {
 		setRate(row, "ops/s", c, pathStatsCmds)
 		setRate(row, "conn/s", c, pathStatsConns)
 		setHitPct(row, c)
+		setRate(row, "rej/s", c, pathStatsRejected)
+		setRate(row, "exp/s", c, pathStatsExpired)
+		setRate(row, "evict/s", c, pathStatsEvicted)
+		if delta, ok := c.delta(pathReplOffset); ok {
+			put(row, "offKB/s", delta/c.dt/1024.0)
+		}
 	}
 	setGauge(row, "memMB", c, pathMemUsed, bytesToMB)
 	setGauge(row, "rssMB", c, pathMemRSS, bytesToMB)
+	setGauge(row, "frag%", c, pathMemFrag, identity)
 	setGauge(row, "cli", c, pathClientsConn, identity)
 	setGauge(row, "blk", c, pathClientsBlocked, identity)
 	setGauge(row, "inKB/s", c, pathStatsInKB, identity)
@@ -306,6 +356,77 @@ func fillSummary(row *Row, c calculator, reset bool) {
 	setGauge(row, "availMB", c, pathHostMemAvail, identity)
 	row.Values["repl"] = c.text(pathReplRole)
 	setGauge(row, "repls", c, pathReplSlaves, identity)
+}
+
+func fillServer(row *Row, c calculator, reset bool) {
+	if !reset {
+		setRate(row, "ops/s", c, pathStatsCmds)
+		setRate(row, "conn/s", c, pathStatsConns)
+		setHitPct(row, c)
+		setRate(row, "rej/s", c, pathStatsRejected)
+		setRate(row, "err/s", c, pathStatsErrors)
+		setRate(row, "exp/s", c, pathStatsExpired)
+		setRate(row, "evict/s", c, pathStatsEvicted)
+	}
+	setGauge(row, "cli", c, pathClientsConn, identity)
+	setGauge(row, "blk", c, pathClientsBlocked, identity)
+	setGauge(row, "inKB/s", c, pathStatsInKB, identity)
+	setGauge(row, "outKB/s", c, pathStatsOutKB, identity)
+}
+
+func fillNetwork(row *Row, c calculator, reset bool) {
+	setGauge(row, "inKB/s", c, pathStatsInKB, identity)
+	setGauge(row, "outKB/s", c, pathStatsOutKB, identity)
+	if !reset {
+		rxPrev, txPrev := parseNetDev(c.prev.GetText(pathHostNetDev))
+		rxCurr, txCurr := parseNetDev(c.cur.GetText(pathHostNetDev))
+		put(row, "rxKB/s", delta(rxCurr, rxPrev)/c.dt)
+		put(row, "txKB/s", delta(txCurr, txPrev)/c.dt)
+		setRate(row, "conn/s", c, pathStatsConns)
+	}
+}
+
+func fillNetworkVerbose(row *Row, c calculator, reset bool) {
+	if !reset {
+		setRate(row, "rej/s", c, pathStatsRejected)
+	}
+	setGauge(row, "pubsub", c, pathClientsPubsub, identity)
+}
+
+func fillLatency(row *Row, c calculator) {
+	prefix := "valkey.latency_latest."
+	for path, value := range c.cur.Values {
+		if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, ".latest_ms") {
+			continue
+		}
+		event := strings.TrimSuffix(strings.TrimPrefix(path, prefix), ".latest_ms")
+		if event != "" {
+			put(row, event, value)
+		}
+	}
+}
+
+func fillMemoryVerbose(row *Row, c calculator) {
+	setGauge(row, "frag%", c, pathMemFrag, identity)
+	setGauge(row, "luaMB", c, pathMemLua, bytesToMB)
+	setGauge(row, "scripts", c, pathMemScripts, identity)
+	setGauge(row, "defrag", c, pathMemDefrag, identity)
+}
+
+func fillClientsVerbose(row *Row, c calculator, reset bool) {
+	setGauge(row, "pubsub", c, pathClientsPubsub, identity)
+	if !reset {
+		setRate(row, "rej/s", c, pathStatsRejected)
+	}
+}
+
+func fillReplicationVerbose(row *Row, c calculator) {
+	setGauge(row, "backlogMB", c, pathReplBacklogSize, bytesToMB)
+	row.Values["backlog"] = boolishGauge(c, pathReplBacklogActive)
+}
+
+func fillHostVerbose(row *Row, c calculator) {
+	setGauge(row, "rssMB", c, pathHostVmRSS, bytesToMB)
 }
 
 func fillMemory(row *Row, c calculator, reset bool) {
@@ -694,20 +815,64 @@ func max(a, b float64) float64 {
 func viewColumns(view string, opts Options) []string {
 	switch view {
 	case "summary":
-		return []string{"time", "ops/s", "conn/s", "hit%", "memMB", "rssMB", "cli", "blk", "inKB/s", "outKB/s", "us%", "sy%", "id%", "wa%", "load1", "availMB", "repl", "repls"}
+		return []string{"time", "ops/s", "conn/s", "hit%", "frag%", "rej/s", "exp/s", "evict/s", "offKB/s", "memMB", "rssMB", "cli", "blk", "inKB/s", "outKB/s", "us%", "sy%", "id%", "wa%", "load1", "availMB", "repl", "repls"}
+	case "server":
+		return []string{"time", "ops/s", "conn/s", "hit%", "rej/s", "err/s", "exp/s", "evict/s", "cli", "blk", "inKB/s", "outKB/s"}
+	case "network":
+		cols := []string{"time", "inKB/s", "outKB/s", "rxKB/s", "txKB/s", "conn/s"}
+		if opts.Verbose {
+			cols = append(cols, "rej/s", "pubsub")
+		}
+		return cols
 	case "memory":
-		return []string{"time", "usedMB", "rssMB", "maxMB", "rss%", "availMB", "exp/s", "evict/s"}
+		cols := []string{"time", "usedMB", "rssMB", "maxMB", "rss%", "availMB", "exp/s", "evict/s"}
+		if opts.Verbose {
+			cols = append(cols, "frag%", "luaMB", "scripts", "defrag")
+		}
+		return cols
 	case "clients":
-		return []string{"time", "conn", "blocked", "conn/s", "ops/s", "hit%"}
+		cols := []string{"time", "conn", "blocked", "conn/s", "ops/s", "hit%"}
+		if opts.Verbose {
+			cols = append(cols, "pubsub", "rej/s")
+		}
+		return cols
 	case "cpu":
 		return []string{"time", "ops/s", "vkUsr%", "vkSys%", "us%", "sy%", "id%", "wa%", "load1"}
 	case "persistence":
 		return []string{"time", "rdb", "aof", "exp/s", "evict/s", "slowlog"}
 	case "replication":
-		return []string{"time", "role", "replicas", "offsetMB", "offMB/s"}
+		cols := []string{"time", "role", "replicas", "offsetMB", "offMB/s"}
+		if opts.Verbose {
+			cols = append(cols, "backlog", "backlogMB")
+		}
+		return cols
 	case "host":
-		return []string{"time", "r", "b", "swpd", "free", "buff", "cache", "bi", "bo", "forks/s", "cs/s", "us%", "sy%", "id%", "wa%", "st%", "load1"}
+		cols := []string{"time", "r", "b", "swpd", "free", "buff", "cache", "bi", "bo", "forks/s", "cs/s", "us%", "sy%", "id%", "wa%", "st%", "load1"}
+		if opts.Verbose {
+			cols = append(cols, "rssMB")
+		}
+		return cols
+	case "latency":
+		return []string{"time"}
 	default:
 		return []string{"time"}
+	}
+}
+
+func ValidView(view string) bool {
+	switch view {
+	case "summary", "server", "memory", "clients", "cpu", "persistence", "replication", "commandstats", "host", "network", "latency":
+		return true
+	default:
+		return false
+	}
+}
+
+func VerboseSupported(view string) bool {
+	switch view {
+	case "memory", "clients", "replication", "host", "network":
+		return true
+	default:
+		return false
 	}
 }
