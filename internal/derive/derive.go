@@ -64,6 +64,7 @@ type Report struct {
 	SampleCount int              `json:"sampleCount"`
 	Start       time.Time        `json:"start"`
 	End         time.Time        `json:"end"`
+	Header      model.Header     `json:"header,omitempty"`
 	Columns     []string         `json:"columns,omitempty"`
 	Rows        []Row            `json:"rows,omitempty"`
 	Commands    []CommandRow     `json:"commands,omitempty"`
@@ -165,8 +166,9 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 		SampleCount: len(samples),
 		Start:       samples[0].Time,
 		End:         samples[len(samples)-1].Time,
-		Columns:     viewColumns(opts.View),
+		Columns:     viewColumns(opts.View, opts),
 		Metadata:    metadata,
+		Header:      buildHeader(last),
 	}
 	switch opts.View {
 	case "commandstats":
@@ -689,7 +691,7 @@ func max(a, b float64) float64 {
 	return b
 }
 
-func viewColumns(view string) []string {
+func viewColumns(view string, opts Options) []string {
 	switch view {
 	case "summary":
 		return []string{"time", "ops/s", "conn/s", "hit%", "memMB", "rssMB", "cli", "blk", "inKB/s", "outKB/s", "us%", "sy%", "id%", "wa%", "load1", "availMB", "repl", "repls"}

@@ -140,6 +140,9 @@ func asFloatOK(v any) (float64, bool) {
 		if text == "" {
 			return 0, false
 		}
+		if strings.Count(text, ".") > 1 {
+			return 0, false
+		}
 		if text == "yes" || text == "true" {
 			return 1, true
 		}
