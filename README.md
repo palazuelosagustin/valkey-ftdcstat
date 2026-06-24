@@ -15,6 +15,8 @@ go build -o valkey-ftdcstat ./cmd/valkey-ftdcstat
 valkey-ftdcstat <path-to-diagnostic-data-directory> [--view summary|memory|clients|cpu|persistence|replication|commandstats|host] [--interval N] [--json]
 ```
 
+`--json` emits the raw capture data as valid JSON for debugging. It does not derive rows, build headers, or calculate deltas.
+
 Default view:
 
 ```bash

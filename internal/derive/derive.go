@@ -21,6 +21,7 @@ type Report struct {
 	SampleCount int              `json:"sampleCount"`
 	Start       time.Time        `json:"start"`
 	End         time.Time        `json:"end"`
+	Header      model.Header     `json:"header,omitempty"`
 	Columns     []string         `json:"columns,omitempty"`
 	Rows        []map[string]any `json:"rows,omitempty"`
 	Commands    []CommandRow     `json:"commands,omitempty"`
@@ -46,6 +47,7 @@ func Build(capture model.Capture, opts Options) (Report, error) {
 		SampleCount: len(capture.Samples),
 		Start:       capture.Samples[0].Time(),
 		End:         capture.Samples[len(capture.Samples)-1].Time(),
+		Header:      buildHeader(capture.Samples[len(capture.Samples)-1]),
 		Columns:     viewColumns(opts.View),
 	}
 
@@ -161,6 +163,125 @@ func buildRow(prev, curr model.Sample, view string) map[string]any {
 		appendHostVMStat(row, prev.Host, curr.Host, dt)
 	}
 	return row
+}
+
+func buildHeader(sample model.Sample) model.Header {
+	return model.Header{
+		HostInfo:        buildHostInfo(sample.Host, sample.Valkey.Info.Server),
+		BuildInfo:       buildBuildInfo(sample.Valkey.Info.Server),
+		ReplicationInfo: buildReplicationInfo(sample.Valkey.Info.Replication, sample.Valkey.Info.Cluster),
+	}
+}
+
+func buildHostInfo(host model.HostMetrics, server map[string]any) map[string]any {
+	info := map[string]any{}
+	if os := model.Text(server, "os"); os != "" {
+		info["os"] = os
+	}
+	if len(host.Memory) > 0 {
+		info["memory"] = map[string]string{
+			"available": host.Memory["MemAvailable"],
+			"buffers":   host.Memory["Buffers"],
+			"cached":    host.Memory["Cached"],
+			"free":      host.Memory["MemFree"],
+			"total":     host.Memory["MemTotal"],
+		}
+	}
+	if len(host.LoadAvg) > 0 {
+		info["loadavg"] = map[string]any{
+			"1m":  model.AsFloat(host.LoadAvg["1m"]),
+			"5m":  model.AsFloat(host.LoadAvg["5m"]),
+			"15m": model.AsFloat(host.LoadAvg["15m"]),
+		}
+	}
+	if len(host.CPU) > 0 {
+		info["cpu"] = map[string]any{
+			"user":          model.AsFloat(host.CPU["user"]),
+			"system":        model.AsFloat(host.CPU["system"]),
+			"idle":          model.AsFloat(host.CPU["idle"]),
+			"iowait":        model.AsFloat(host.CPU["iowait"]),
+			"procs_running": model.AsFloat(host.CPU["procs_running"]),
+			"procs_blocked": model.AsFloat(host.CPU["procs_blocked"]),
+		}
+	}
+	if len(info) == 0 {
+		return nil
+	}
+	return info
+}
+
+func buildBuildInfo(server map[string]any) map[string]any {
+	if len(server) == 0 {
+		return nil
+	}
+	info := map[string]any{}
+	putText(info, "valkeyVersion", model.Text(server, "valkey_version"))
+	putText(info, "redisVersion", model.Text(server, "redis_version"))
+	putText(info, "releaseStage", model.Text(server, "valkey_release_stage"))
+	putText(info, "buildID", model.Text(server, "redis_build_id"))
+	putText(info, "gccVersion", model.Text(server, "gcc_version"))
+	putText(info, "os", model.Text(server, "os"))
+	putText(info, "multiplexingAPI", model.Text(server, "multiplexing_api"))
+	putText(info, "serverMode", model.Text(server, "server_mode"))
+	putText(info, "gitSHA1", model.Text(server, "redis_git_sha1"))
+	if v := model.Number(server, "arch_bits"); v > 0 {
+		info["archBits"] = v
+	}
+	if _, ok := server["redis_git_dirty"]; ok {
+		info["gitDirty"] = model.Number(server, "redis_git_dirty") != 0
+	}
+	return info
+}
+
+func buildReplicationInfo(replication, cluster map[string]any) map[string]any {
+	if len(replication) == 0 && len(cluster) == 0 {
+		return nil
+	}
+	info := map[string]any{}
+	putText(info, "role", model.Text(replication, "role"))
+	info["replicas"] = model.Number(replication, "connected_slaves")
+	info["clusterEnabled"] = model.Number(cluster, "cluster_enabled") != 0
+	if names := replicaNames(replication); len(names) > 0 {
+		info["replicaNames"] = names
+	}
+	return info
+}
+
+func replicaNames(replication map[string]any) []string {
+	keys := make([]string, 0, len(replication))
+	for key := range replication {
+		if strings.HasPrefix(key, "slave") || strings.HasPrefix(key, "replica") {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	var names []string
+	for _, key := range keys {
+		entry, ok := replication[key].(map[string]any)
+		if !ok {
+			continue
+		}
+		name := firstText(entry, "name", "replica_name", "node_name", "alias")
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func firstText(m map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := model.Text(m, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func putText(dst map[string]any, key, value string) {
+	if value != "" {
+		dst[key] = value
+	}
 }
 
 func latestForView(sample model.Sample, view string) any {

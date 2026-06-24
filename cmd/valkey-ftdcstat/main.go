@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -41,6 +42,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "no samples found")
 		os.Exit(1)
 	}
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(capture); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	opts := derive.Options{
 		View:     *view,
@@ -51,7 +61,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if err := render.Report(os.Stdout, report, *jsonOut); err != nil {
+	if err := render.Report(os.Stdout, report); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
