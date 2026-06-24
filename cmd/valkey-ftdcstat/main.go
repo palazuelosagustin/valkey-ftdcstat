@@ -76,7 +76,7 @@ func main() {
 		printError(os.Stderr, err)
 		os.Exit(1)
 	}
-	if opts.Avg > 0 {
+	if opts.Avg > 0 && opts.View != "slowlog" {
 		report.Rows = aggregate.AverageRows(report.Rows, opts.Avg)
 	}
 
@@ -103,7 +103,7 @@ func runWeb(w io.Writer, report derive.Report, warnings []model.Warning, display
 		TimeRange:    opts.Range,
 		TimeLocation: time.UTC,
 	})
-	if dataset.Metadata.RowCount > 5000 {
+	if opts.View != "slowlog" && dataset.Metadata.RowCount > 5000 {
 		fmt.Fprintln(os.Stderr, "warning: Large capture detected. Consider using --avg 5m or --from/--to for better browser performance.")
 	}
 	server, err := webui.NewServer(dataset)
@@ -270,7 +270,7 @@ func parseArgs(args []string) (cliOptions, error) {
 		return opts, errors.New("--avg cannot be combined with --interval")
 	}
 	if !derive.ValidView(opts.View) {
-		return opts, errors.New("--view must be one of summary, server, memory, clients, cpu, persistence, replication, commandstats, host, network, latency")
+		return opts, errors.New("--view must be one of summary, server, memory, clients, cpu, persistence, replication, commandstats, slowlog, host, network, latency")
 	}
 	if opts.Verbose && !derive.VerboseSupported(opts.View) {
 		return opts, errors.New("--verbose is only supported for memory, clients, replication, host, and network views")

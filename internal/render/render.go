@@ -47,8 +47,14 @@ func Report(w io.Writer, report derive.Report, opts DisplayOptions) error {
 	}
 	fmt.Fprintln(w)
 
+	if report.SlowlogNote != "" {
+		fmt.Fprintf(w, "note: %s\n\n", report.SlowlogNote)
+	}
 	if report.LatencyNote != "" {
 		fmt.Fprintf(w, "note: %s\n\n", report.LatencyNote)
+	}
+	if report.View == "slowlog" {
+		return renderSlowlog(w, report)
 	}
 	return renderTable(w, report.View, report.Rows, report.Columns)
 }
@@ -242,6 +248,42 @@ func renderHostSection(w io.Writer, hostInfo map[string]any) {
 	if available > 0 || total > 0 {
 		fmt.Fprintf(w, "  memory: %s available / %s total\n", formatBinaryMB(available), formatBinaryMB(total))
 	}
+}
+
+func renderSlowlog(w io.Writer, report derive.Report) error {
+	fmt.Fprintln(w, "slowlog summary:")
+	fmt.Fprint(w, formatSlowlogSummary(report.SlowlogSummary))
+	fmt.Fprintln(w)
+	if len(report.Slowlog) == 0 {
+		_, err := fmt.Fprintln(w, "no slowlog entries")
+		return err
+	}
+	fmt.Fprintf(w, "%-12s  %-40s  %8s  %8s  %5s  %s\n", "command", "args", "maxMs", "avgMs", "count", "lastSeen")
+	for _, row := range report.Slowlog {
+		fmt.Fprintf(w, "%-12s  %-40s  %8.1f  %8.1f  %5d  %s\n",
+			row.Command,
+			truncateDisplay(row.ArgsDisplay, 40),
+			row.MaxMs,
+			row.AvgMs,
+			row.Count,
+			row.LastSeen.UTC().Format("2006-01-02T15:04:05Z"),
+		)
+	}
+	return nil
+}
+
+func formatSlowlogSummary(summary derive.SlowlogSummary) string {
+	return fmt.Sprintf("  unique patterns: %d\n  total slow ops:  %d\n", summary.UniquePatterns, summary.TotalEntries)
+}
+
+func truncateDisplay(value string, width int) string {
+	if width <= 0 || len(value) <= width {
+		return value
+	}
+	if width <= 3 {
+		return value[:width]
+	}
+	return value[:width-3] + "..."
 }
 
 func orderedColumns(rows []derive.Row, preferred []string) []string {

@@ -200,22 +200,30 @@ label.metric {
   color: var(--muted);
   text-align: center;
 }
-.commandstats-table {
+.commandstats-table,
+.slowlog-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.92rem;
 }
 .commandstats-table th,
-.commandstats-table td {
+.commandstats-table td,
+.slowlog-table th,
+.slowlog-table td {
   padding: 8px 10px;
   border-bottom: 1px solid rgba(20, 24, 31, 0.08);
   text-align: right;
 }
 .commandstats-table th:first-child,
-.commandstats-table td:first-child {
+.commandstats-table td:first-child,
+.slowlog-table th:first-child,
+.slowlog-table td:first-child,
+.slowlog-table th:nth-child(2),
+.slowlog-table td:nth-child(2) {
   text-align: left;
 }
-#commandstats h2 {
+#commandstats h2,
+#slowlog h2 {
   margin: 0 0 12px;
 }
 @media (max-width: 980px) {

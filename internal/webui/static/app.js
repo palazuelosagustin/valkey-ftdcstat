@@ -72,7 +72,9 @@ function renderPage() {
   const topMeta = document.getElementById("top-meta");
   const subtitle = document.getElementById("subtitle");
   const avg = state.metadata.avg.enabled ? `avg ${state.metadata.avg.bucket}` : "raw intervals";
-  const rowLabel = `${state.metadata.rowCount} plotted rows`;
+  const rowLabel = state.data.slowlog
+    ? `${state.data.slowlog.length} slowlog patterns`
+    : `${state.metadata.rowCount} plotted rows`;
   subtitle.textContent = `${state.metadata.view} view • ${rowLabel} • ${avg} • ${formatRange(state.metadata.timeRange)}`;
   topMeta.innerHTML = "";
   addPill(topMeta, `view=${state.metadata.view}`);
@@ -83,8 +85,55 @@ function renderPage() {
   document.getElementById("metadata").textContent = state.metadata.headerText || "";
   renderZoomStatus();
   renderWarnings();
+  renderSlowlogTable();
   renderMetricGroups();
   renderCharts();
+}
+
+function renderSlowlogTable() {
+  const root = document.getElementById("slowlog");
+  const sidebar = document.querySelector(".sidebar");
+  const rows = state.data.slowlog || [];
+  if (!rows.length) {
+    root.hidden = true;
+    root.innerHTML = "";
+    if (sidebar) sidebar.hidden = false;
+    return;
+  }
+  root.hidden = false;
+  if (sidebar) sidebar.hidden = true;
+  const table = document.createElement("table");
+  table.className = "slowlog-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>command</th>
+        <th>args</th>
+        <th>maxMs</th>
+        <th>avgMs</th>
+        <th>count</th>
+        <th>lastSeen</th>
+      </tr>
+    </thead>
+  `;
+  const body = document.createElement("tbody");
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(row.command)}</td>
+      <td>${escapeHtml(row.argsDisplay)}</td>
+      <td>${formatValue(row.maxMs, "number")}</td>
+      <td>${formatValue(row.avgMs, "number")}</td>
+      <td>${formatValue(row.count, "number")}</td>
+      <td>${escapeHtml(row.lastSeen)}</td>
+    `;
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+  root.innerHTML = "";
+  const title = document.createElement("h2");
+  title.textContent = "slowlog";
+  root.append(title, table);
 }
 
 function escapeHtml(value) {

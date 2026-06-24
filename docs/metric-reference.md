@@ -34,6 +34,7 @@ Views:
 | `persistence` | RDB/AOF flags and slowlog length |
 | `replication` | Role, replica count, offset rates |
 | `commandstats` | Per-interval rates for busiest commands (`get/s`, …) |
+| `slowlog` | Deduplicated slow operations ranked slowest-first (aggregate, not time series) |
 | `host` | vmstat-style host metrics |
 | `network` | Valkey and host network throughput |
 | `latency` | LATENCY LATEST events plus slowlog/blocked/fork/event-loop fallbacks |
@@ -202,6 +203,30 @@ Dynamic event columns from `LATENCY LATEST`:
 
 When no LATENCY events exist in the capture, a note explains that fallbacks are shown.
 
+### Slowlog (`--view slowlog`)
+
+Aggregate view over all samples in the capture window (respects `--from`/`--to`).
+
+| Column | Meaning |
+|--------|---------|
+| `command` | Valkey command name (uppercase) |
+| `args` | Argument summary (truncated; collector redaction preserved) |
+| `maxMs` | Slowest occurrence |
+| `avgMs` | Mean duration across deduplicated occurrences |
+| `count` | Times this command+args fingerprint appeared |
+| `lastSeen` | Sample time when the most recent matching entry was observed |
+
+Dedup rules:
+
+1. Each slowlog `id` is counted once across overlapping sample snapshots.
+2. Rows with the same command+args fingerprint merge into one line with `count > 1`.
+
+Data source: `valkey.slowlog.entries[]` from each sample (`SLOWLOG GET 8` when `collect-slowlog yes`).
+This is not full slowlog history — only recent entries snapshotted per interval.
+
+`--top N` limits displayed rows (default **50**; `--top 0` = all patterns).
+`--avg` and `--interval` do not apply.
+
 ### Persistence
 
 | Column | Source |
@@ -217,6 +242,7 @@ Charts mirror terminal section groups:
 - **host** — `host / CPU`, `host / Memory`, `host / Disks`
 - **latency** — fallbacks + `latency / events`
 - **commandstats** — all `<cmd>/s` columns in one panel
+- **slowlog** — ranked slow-operation table
 - **memory/clients/network/replication** — extra subpanels with `--verbose`
 
 API:
@@ -234,7 +260,7 @@ API:
 | Replication lag | `offKB/s`, `offsetMB`, `repls` |
 | Disk bottleneck | `host` view `bi`/`bo`, `wa%` |
 | Event-loop stalls | `latency` view `eloopUs`, LATENCY events |
-| Slow commands building up | `slowlog`, `slowMaxMs` (full slowlog view planned — see backlog) |
+| Slow commands building up | `--view slowlog`, or `latency.slowlog` / `slowMaxMs` gauges |
 
 ## Updating this reference
 

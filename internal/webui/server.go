@@ -53,6 +53,16 @@ type DataResponse struct {
 	Avg       AvgInfo             `json:"avg"`
 	Sections  map[string][]string `json:"sections"`
 	Rows      []DataRow           `json:"rows"`
+	Slowlog   []SlowlogRow        `json:"slowlog,omitempty"`
+}
+
+type SlowlogRow struct {
+	Command     string  `json:"command"`
+	ArgsDisplay string  `json:"argsDisplay"`
+	MaxMs       float64 `json:"maxMs"`
+	AvgMs       float64 `json:"avgMs"`
+	Count       int     `json:"count"`
+	LastSeen    string  `json:"lastSeen"`
 }
 
 type AvgInfo struct {
@@ -104,7 +114,47 @@ func ResolveListenAddress(listen string) string {
 	return listen
 }
 
+func buildSlowlogDataset(report derive.Report, warnings []model.Warning, opts Options) Dataset {
+	loc := opts.TimeLocation
+	if loc == nil {
+		loc = time.UTC
+	}
+	rows := buildSlowlogRows(report.Slowlog, loc)
+	return Dataset{
+		Metadata: MetadataResponse{
+			View:       report.View,
+			TimeRange:  timeRangeInfo(opts.TimeRange, loc),
+			HeaderText: render.HeaderText(report.Header),
+			Metadata:   report.Metadata.Summary(),
+			Warnings:   append([]model.Warning(nil), warnings...),
+			RowCount:   len(rows),
+		},
+		Data: DataResponse{
+			View:    report.View,
+			Slowlog: rows,
+		},
+	}
+}
+
+func buildSlowlogRows(rows []derive.SlowlogRow, loc *time.Location) []SlowlogRow {
+	out := make([]SlowlogRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, SlowlogRow{
+			Command:     row.Command,
+			ArgsDisplay: row.ArgsDisplay,
+			MaxMs:       row.MaxMs,
+			AvgMs:       row.AvgMs,
+			Count:       row.Count,
+			LastSeen:    row.LastSeen.In(loc).Format(time.RFC3339),
+		})
+	}
+	return out
+}
+
 func BuildDataset(report derive.Report, warnings []model.Warning, opts Options) Dataset {
+	if report.View == "slowlog" {
+		return buildSlowlogDataset(report, warnings, opts)
+	}
 	loc := opts.TimeLocation
 	if loc == nil {
 		loc = time.UTC

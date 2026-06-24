@@ -17,7 +17,7 @@ Use this skill to read, explain, and troubleshoot `valkey-ftdcstat` output from 
    - local web API data from `/api/metadata` or `/api/data`
    - a request for which `valkey-ftdcstat` command to run
    - a code/docs/test change that affects metric semantics
-2. Identify the selected view: `summary`, `server`, `memory`, `clients`, `cpu`, `persistence`, `replication`, `commandstats`, `host`, `network`, or `latency`.
+2. Identify the selected view: `summary`, `server`, `memory`, `clients`, `cpu`, `persistence`, `replication`, `commandstats`, `slowlog`, `host`, `network`, or `latency`.
 3. Load `references/metric-reference.md` when column meanings, formulas, display semantics, or diagnostic hints are needed.
 4. For web/API behavior, load `references/api_reference.md`.
 5. Separate observed values from interpretation. State confidence and missing context when diagnosis depends on workload, deployment, or topology.
@@ -58,6 +58,9 @@ valkey-ftdcstat diagnostic.data --view host --device sda
 # latency events and fallbacks
 valkey-ftdcstat diagnostic.data --view latency
 
+# deduplicated slow operations, slowest first
+valkey-ftdcstat diagnostic.data --view slowlog --top 20
+
 # local charts; still prints terminal output
 valkey-ftdcstat diagnostic.data --web --view summary --avg 5m
 ```
@@ -67,7 +70,7 @@ Flag rules:
 - `--view summary` is the default.
 - `--interval N` controls display spacing; it does not aggregate samples.
 - `--avg DURATION` averages derived rows into fixed UTC buckets (`1m`–`15m`); cannot combine with `--interval`.
-- `--top N` limits command columns in `summary` and `commandstats` (default 8; `--top 0` = all active commands).
+- `--top N` limits command columns in `summary`/`commandstats` (default 8) and slowlog rows in `slowlog` (default 50).
 - `--json` cannot combine with `--web`.
 - `--verbose` expands only `memory`, `clients`, `replication`, `host`, and `network`.
 - `--device` is only valid with `--view host`.
@@ -78,11 +81,8 @@ Flag rules:
 - `0` = present and zero; `-` = missing or rate suppressed after gap/restart.
 - Command columns look like `get/s`, `info/s` (not `ops/s`).
 - After `gap …: rate baseline reset`, rate columns are blank for that row.
+- `--view slowlog` is an aggregate ranked table, not a time series.
 - Do not over-diagnose from one spike; prefer sustained patterns.
-
-## planned features
-
-See `docs/backlog.md` in the repo. **Phase 8** will add `--view slowlog`: deduplicated slow operations ranked slowest-first with a repeat counter.
 
 ## bundled references
 

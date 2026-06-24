@@ -2,9 +2,7 @@
 
 ## Phase 8 — Dedicated `slowlog` view
 
-**Status:** planned (not started)
-
-### Goal
+**Status:** implemented (`--view slowlog`)
 
 Add `--view slowlog` as a **unique aggregate view** (not a time series) that surfaces slow operations from the capture's slowlog samples.
 

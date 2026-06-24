@@ -16,31 +16,33 @@ import (
 )
 
 func TestGoldenOutputs(t *testing.T) {
-	root := filepath.Join("..", "..", "testfixtures", "diagnostic.data")
-	if _, err := os.Stat(root); err != nil {
-		t.Fatal(err)
-	}
-
 	cases := []struct {
 		view string
+		path string
 		opts cliOptions
 	}{
-		{view: "summary", opts: cliOptions{View: "summary", Interval: 60, TopCommands: -1}},
-		{view: "server", opts: cliOptions{View: "server", Interval: 60, TopCommands: -1}},
-		{view: "host", opts: cliOptions{View: "host", Interval: 60, TopCommands: -1}},
-		{view: "latency", opts: cliOptions{View: "latency", Interval: 60, TopCommands: -1}},
-		{view: "commandstats", opts: cliOptions{View: "commandstats", Interval: 60, TopCommands: 3}},
+		{view: "summary", path: "diagnostic.data", opts: cliOptions{View: "summary", Interval: 60, TopCommands: -1}},
+		{view: "server", path: "diagnostic.data", opts: cliOptions{View: "server", Interval: 60, TopCommands: -1}},
+		{view: "host", path: "diagnostic.data", opts: cliOptions{View: "host", Interval: 60, TopCommands: -1}},
+		{view: "latency", path: "diagnostic.data", opts: cliOptions{View: "latency", Interval: 60, TopCommands: -1}},
+		{view: "commandstats", path: "diagnostic.data", opts: cliOptions{View: "commandstats", Interval: 60, TopCommands: 3}},
+		{view: "slowlog", path: "slowlog.diagnostic.data", opts: cliOptions{View: "slowlog", TopCommands: -1}},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.view, func(t *testing.T) {
+			captureRoot := filepath.Join("..", "..", "testfixtures", tc.path)
+			if _, err := os.Stat(captureRoot); err != nil {
+				t.Fatal(err)
+			}
 			goldenPath := filepath.Join("..", "..", "testfixtures", "outputs", tc.view+".golden")
 			wantBytes, err := os.ReadFile(goldenPath)
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := renderCapture(t, root, tc.opts)
-			want := string(wantBytes)
+			got := renderCapture(t, captureRoot, tc.opts)
+			got = normalizeGoldenOutput(got, tc.path)
+			want := normalizeGoldenOutput(string(wantBytes), tc.path)
 			if got != want {
 				gotLines := strings.Split(got, "\n")
 				wantLines := strings.Split(want, "\n")
@@ -83,7 +85,7 @@ func renderCapture(t *testing.T, path string, opts cliOptions) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.Avg > 0 {
+	if opts.Avg > 0 && opts.View != "slowlog" {
 		report.Rows = aggregate.AverageRows(report.Rows, opts.Avg)
 	}
 
@@ -91,14 +93,14 @@ func renderCapture(t *testing.T, path string, opts cliOptions) string {
 	if err := render.Report(&buf, report, render.DisplayOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	return normalizeGoldenOutput(buf.String())
+	return buf.String()
 }
 
-func normalizeGoldenOutput(output string) string {
+func normalizeGoldenOutput(output, fixturePath string) string {
 	lines := strings.Split(output, "\n")
 	for i, line := range lines {
 		if strings.HasPrefix(line, "path:") {
-			lines[i] = "path:    testfixtures/diagnostic.data"
+			lines[i] = "path:    testfixtures/" + fixturePath
 		}
 	}
 	return strings.Join(lines, "\n")

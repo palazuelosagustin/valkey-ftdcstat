@@ -1,0 +1,27 @@
+valkey-ftdcstat report
+path:    testfixtures/slowlog.diagnostic.data
+files:   1
+samples: 2
+range:   2026-06-20T11:59:11Z .. 2026-06-20T12:00:11Z  (1m 00s)
+
+metricsRange:
+  start: -
+  end:   -
+
+serverInfo:
+  Valkey 9.1.0 | primary
+  topology:
+    role: primary
+    replicas: 0
+    cluster: disabled
+
+
+note: slowlog view aggregates SLOWLOG GET 8 snapshots from each sample; not full slowlog history
+
+slowlog summary:
+  unique patterns: 2
+  total slow ops:  4
+
+command       args                                         maxMs     avgMs  count  lastSeen
+HGETALL       user:session:*                               900.0     850.0      2  2026-06-20T12:00:11Z
+GET           user:1                                       600.0     550.0      2  2026-06-20T12:00:11Z

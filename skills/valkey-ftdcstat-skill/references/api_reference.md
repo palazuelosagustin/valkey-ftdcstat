@@ -24,6 +24,7 @@ valkey-ftdcstat diagnostic.data --view summary | less -S
 valkey-ftdcstat diagnostic.data --view summary --avg 5m
 valkey-ftdcstat diagnostic.data --from "2026-06-20T12:00:00" --to "2026-06-20T18:00:00"
 valkey-ftdcstat diagnostic.data --view commandstats --top 5
+valkey-ftdcstat diagnostic.data --view slowlog --top 20
 valkey-ftdcstat diagnostic.data --view host --device sda --verbose
 valkey-ftdcstat diagnostic.data --view latency --json
 valkey-ftdcstat diagnostic.data --web --view summary --avg 5m
@@ -64,8 +65,11 @@ After intentional output changes:
 go test ./cmd/valkey-ftdcstat -run TestGolden -v   # verify
 # regenerate fixtures manually:
 go build -o valkey-ftdcstat ./cmd/valkey-ftdcstat
-for v in summary server latency commandstats host; do
-  extra=""; [ "$v" = commandstats ] && extra="--top 3"
-  ./valkey-ftdcstat testfixtures/diagnostic.data --view $v --interval 60 $extra > testfixtures/outputs/${v}.golden
+for v in summary server latency commandstats host slowlog; do
+  extra=""
+  [ "$v" = commandstats ] && extra="--top 3"
+  [ "$v" = slowlog ] && root=testfixtures/slowlog.diagnostic.data
+  [ -z "$root" ] && root=testfixtures/diagnostic.data
+  ./valkey-ftdcstat "$root" --view $v --interval 60 $extra > testfixtures/outputs/${v}.golden
 done
 ```

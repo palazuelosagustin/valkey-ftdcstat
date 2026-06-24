@@ -84,8 +84,11 @@ type Report struct {
 	Header      model.Header     `json:"header,omitempty"`
 	Columns     []string         `json:"columns,omitempty"`
 	Rows        []Row            `json:"rows,omitempty"`
-	Commands    []CommandRow     `json:"commands,omitempty"`
-	Metadata    model.Metadata   `json:"metadata,omitempty"`
+	Commands       []CommandRow     `json:"commands,omitempty"`
+	Slowlog        []SlowlogRow     `json:"slowlog,omitempty"`
+	SlowlogSummary SlowlogSummary   `json:"slowlogSummary,omitempty"`
+	SlowlogNote    string           `json:"slowlogNote,omitempty"`
+	Metadata       model.Metadata   `json:"metadata,omitempty"`
 	Latest      map[string]any   `json:"latest,omitempty"`
 	LatencyNote string           `json:"latencyNote,omitempty"`
 }
@@ -188,13 +191,27 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 		Header:      buildHeader(last, metadata),
 	}
 	topCommands := topCommandNames(first, last, normalizeTopCommands(opts.TopCommands))
-	if opts.View == "latency" && streamer != nil {
-		events := streamer.LatencyEvents()
-		report.Columns = latencyColumns(events)
-		if len(events) == 0 {
-			report.LatencyNote = "no LATENCY LATEST events in capture; showing slowlog, blocked clients, fork, and event-loop gauges"
+	switch opts.View {
+	case "slowlog":
+		slowRows, summary, note := deriveSlowlog(samples, normalizeSlowlogTop(opts.TopCommands), report.Header.ModuleConfig)
+		report.Slowlog = slowRows
+		report.SlowlogSummary = summary
+		report.SlowlogNote = note
+		report.Columns = slowlogColumns()
+		report.Latest = map[string]any{
+			"uniquePatterns": summary.UniquePatterns,
+			"totalEntries":   summary.TotalEntries,
 		}
-	} else {
+		return report, nil
+	case "latency":
+		if streamer != nil {
+			events := streamer.LatencyEvents()
+			report.Columns = latencyColumns(events)
+			if len(events) == 0 {
+				report.LatencyNote = "no LATENCY LATEST events in capture; showing slowlog, blocked clients, fork, and event-loop gauges"
+			}
+		}
+	default:
 		switch opts.View {
 		case "summary":
 			report.Columns = summaryColumns(topCommands)
@@ -908,7 +925,7 @@ func viewColumns(view string, opts Options) []string {
 
 func ValidView(view string) bool {
 	switch view {
-	case "summary", "server", "memory", "clients", "cpu", "persistence", "replication", "commandstats", "host", "network", "latency":
+	case "summary", "server", "memory", "clients", "cpu", "persistence", "replication", "commandstats", "slowlog", "host", "network", "latency":
 		return true
 	default:
 		return false

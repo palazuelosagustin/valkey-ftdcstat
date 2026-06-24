@@ -64,6 +64,7 @@ The web UI groups charts by section:
 - **latency** — fallback gauges plus dynamic `latency / events` columns
 - **memory**, **clients**, **network**, **replication** — extra subpanels when `--verbose` is set
 - **commandstats** — per-interval command rates (`get/s`, `set/s`, …)
+- **slowlog** — ranked slow-operation table (aggregate view, not time series)
 
 Views:
 
@@ -94,6 +95,7 @@ cpu           Valkey and host CPU
 persistence   RDB/AOF state and slowlog length
 replication   role, replicas, and replication offset
 commandstats  per-interval command rates for the busiest commands
+slowlog       deduplicated slow operations ranked slowest-first (`--top` limits rows)
 host          vmstat-style host metrics
 network       Valkey and host network throughput
 latency       LATENCY LATEST event gauges plus slowlog/blocked/fork/event-loop fallbacks
@@ -107,6 +109,7 @@ valkey-ftdcstat diagnostic.data --view server --interval 300
 valkey-ftdcstat diagnostic.data --view network --verbose
 valkey-ftdcstat diagnostic.data --view latency --json
 valkey-ftdcstat diagnostic.data --view commandstats
+valkey-ftdcstat diagnostic.data --view slowlog --top 20
 ```
 
 `--verbose` expands columns for `memory`, `clients`, `replication`, `host`, and

@@ -58,11 +58,12 @@ func (r TimeRange) Overlaps(start, end time.Time) bool {
 
 // MetricSample is a flattened, path-addressable view of one capture sample.
 type MetricSample struct {
-	Time        time.Time
-	Source      string
-	SourceIndex int
-	Values      map[string]float64
-	Text        map[string]string
+	Time            time.Time
+	Source          string
+	SourceIndex     int
+	Values          map[string]float64
+	Text            map[string]string
+	SlowlogEntries  []SlowlogItem
 }
 
 func (s MetricSample) Get(path string) (float64, bool) {

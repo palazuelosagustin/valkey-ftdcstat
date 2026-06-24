@@ -1,0 +1,1 @@
+{"format_version": 1, "module": "valkey-ftdc", "collect-slowlog": "yes", "slowlog-redact": "yes"}
