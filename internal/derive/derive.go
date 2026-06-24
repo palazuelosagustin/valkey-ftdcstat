@@ -184,7 +184,7 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 		Start:       samples[0].Time,
 		End:         samples[len(samples)-1].Time,
 		Metadata:    metadata,
-		Header:      buildHeader(last),
+		Header:      buildHeader(last, metadata),
 	}
 	if opts.View == "latency" && streamer != nil {
 		events := streamer.LatencyEvents()
@@ -842,7 +842,15 @@ func max(a, b float64) float64 {
 func viewColumns(view string, opts Options) []string {
 	switch view {
 	case "summary":
-		return []string{"time", "ops/s", "conn/s", "hit%", "frag%", "rej/s", "exp/s", "evict/s", "offKB/s", "memMB", "rssMB", "cli", "blk", "inKB/s", "outKB/s", "us%", "sy%", "id%", "wa%", "load1", "availMB", "repl", "repls"}
+		return []string{
+			"time",
+			"ops/s", "conn/s", "hit%",
+			"memMB", "rssMB", "frag%",
+			"rej/s", "exp/s", "evict/s", "offKB/s", "inKB/s", "outKB/s",
+			"cli", "blk",
+			"repl", "repls",
+			"us%", "sy%", "id%", "wa%", "load1", "availMB",
+		}
 	case "server":
 		return []string{"time", "ops/s", "conn/s", "hit%", "rej/s", "err/s", "exp/s", "evict/s", "cli", "blk", "inKB/s", "outKB/s"}
 	case "network":

@@ -7,12 +7,46 @@ import (
 	"valkey-ftdcstat/internal/model"
 )
 
-func buildHeader(sample model.MetricSample) model.Header {
+func buildHeader(sample model.MetricSample, metadata model.Metadata) model.Header {
+	buildInfo := buildBuildInfo(sample)
+	if metadata.MaxClients > 0 {
+		if buildInfo == nil {
+			buildInfo = map[string]any{}
+		}
+		buildInfo["maxClients"] = metadata.MaxClients
+	}
+	if v, ok := sample.Get("valkey.info.server.hz"); ok && v > 0 {
+		if buildInfo == nil {
+			buildInfo = map[string]any{}
+		}
+		buildInfo["hz"] = v
+	}
 	return model.Header{
 		HostInfo:        buildHostInfo(sample),
-		BuildInfo:       buildBuildInfo(sample),
+		BuildInfo:       buildInfo,
 		ReplicationInfo: buildReplicationInfo(sample),
+		ModuleConfig:    buildModuleConfig(metadata),
 	}
+}
+
+func buildModuleConfig(metadata model.Metadata) map[string]any {
+	if len(metadata.Config) == 0 {
+		return nil
+	}
+	keys := []string{
+		"interval-ms", "max-file-mb", "collect-host-stats", "collect-slowlog",
+		"slowlog-redact", "path", "compression",
+	}
+	out := map[string]any{}
+	for _, key := range keys {
+		if v, ok := metadata.Config[key]; ok {
+			out[key] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func buildHostInfo(sample model.MetricSample) map[string]any {

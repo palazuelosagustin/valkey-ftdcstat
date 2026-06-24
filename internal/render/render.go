@@ -30,6 +30,33 @@ func Report(w io.Writer, report derive.Report, opts DisplayOptions) error {
 	if opts.WebURL != "" {
 		fmt.Fprintf(w, "web UI: %s\n", opts.WebURL)
 	}
+	renderCaptureHeader(w, report)
+	fmt.Fprintln(w)
+	renderMetricsRangeHeader(w, MetricsRangeFromRows(report.Rows))
+	fmt.Fprintln(w)
+	renderServerInfo(w, report.Header)
+	fmt.Fprintln(w)
+	renderModuleConfig(w, report.Header.ModuleConfig)
+	if len(report.Header.ModuleConfig) > 0 {
+		fmt.Fprintln(w)
+	}
+	renderHostSection(w, report.Header.HostInfo)
+
+	if opts.AvgBucket > 0 {
+		fmt.Fprintf(w, "\nAveraging: %s buckets; datetime is bucket start; values are averaged per bucket.\n", FormatAvgBucket(opts.AvgBucket))
+	}
+	fmt.Fprintln(w)
+
+	if report.View == "commandstats" {
+		return renderCommands(w, report.Commands)
+	}
+	if report.LatencyNote != "" {
+		fmt.Fprintf(w, "note: %s\n\n", report.LatencyNote)
+	}
+	return renderTable(w, report.View, report.Rows, report.Columns)
+}
+
+func renderCaptureHeader(w io.Writer, report derive.Report) {
 	fmt.Fprintf(w, "path:    %s\n", report.Path)
 	fmt.Fprintf(w, "files:   %d\n", len(report.Files))
 	fmt.Fprintf(w, "samples: %d\n", report.SampleCount)
@@ -38,26 +65,68 @@ func Report(w io.Writer, report derive.Report, opts DisplayOptions) error {
 		fmt.Fprintf(w, "  (%s)", formatDuration(report.End.Sub(report.Start)))
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintln(w)
-	renderCompactHeader(w, report.Header)
+}
 
-	if opts.AvgBucket > 0 {
-		fmt.Fprintf(w, "Averaging: %s buckets; datetime is bucket start; values are averaged per bucket.\n\n", FormatAvgBucket(opts.AvgBucket))
-	}
+func renderMetricsRangeHeader(w io.Writer, metricsRange MetricsRange) {
+	fmt.Fprintln(w, "metricsRange:")
+	fmt.Fprintf(w, "  start: %s\n", formatMetricsRangeTime(metricsRange.Start))
+	fmt.Fprintf(w, "  end:   %s\n", formatMetricsRangeTime(metricsRange.End))
+}
 
-	if report.View == "commandstats" {
-		return renderCommands(w, report.Commands)
+func formatMetricsRangeTime(ts time.Time) string {
+	if ts.IsZero() {
+		return "-"
 	}
-	if report.LatencyNote != "" {
-		fmt.Fprintf(w, "note: %s\n\n", report.LatencyNote)
+	return ts.UTC().Format("2006-01-02T15:04:05Z")
+}
+
+func renderServerInfo(w io.Writer, header model.Header) {
+	fmt.Fprintln(w, "serverInfo:")
+	renderServerSection(w, header.BuildInfo, header.ReplicationInfo)
+	renderTopologySection(w, header.ReplicationInfo)
+}
+
+func renderModuleConfig(w io.Writer, config map[string]any) {
+	if len(config) == 0 {
+		return
 	}
-	return renderRows(w, report.Rows, report.Columns)
+	fmt.Fprintln(w, "moduleConfig:")
+	keys := []string{"interval-ms", "max-file-mb", "collect-host-stats", "collect-slowlog", "slowlog-redact", "path", "compression"}
+	for _, key := range keys {
+		if v, ok := config[key]; ok {
+			fmt.Fprintf(w, "  %s: %v\n", key, v)
+		}
+	}
 }
 
 func HeaderText(header model.Header) string {
 	var buf strings.Builder
-	renderCompactHeader(&buf, header)
+	renderServerInfo(&buf, header)
+	if len(header.ModuleConfig) > 0 {
+		fmt.Fprintln(&buf)
+		renderModuleConfig(&buf, header.ModuleConfig)
+	}
+	if header.HostInfo != nil {
+		fmt.Fprintln(&buf)
+		renderHostSection(&buf, header.HostInfo)
+	}
 	return strings.TrimSpace(buf.String())
+}
+
+func renderTable(w io.Writer, view string, rows []derive.Row, columns []string) error {
+	if len(rows) == 0 {
+		_, err := fmt.Fprintln(w, "no derived rows")
+		return err
+	}
+	cols := orderedColumns(rows, columns)
+	layout := LayoutForView(view, cols)
+	renderer := newStreamingRenderer(w, layout, time.UTC)
+	for _, row := range rows {
+		if err := renderer.RenderRow(row); err != nil {
+			return err
+		}
+	}
+	return renderer.Close()
 }
 
 func FormatAvgBucket(bucket time.Duration) string {
@@ -66,15 +135,6 @@ func FormatAvgBucket(bucket time.Duration) string {
 		return bucket.String()
 	}
 	return fmt.Sprintf("%dm", minutes)
-}
-
-func renderCompactHeader(w io.Writer, header model.Header) {
-	renderServerSection(w, header.BuildInfo, header.ReplicationInfo)
-	fmt.Fprintln(w)
-	renderTopologySection(w, header.ReplicationInfo)
-	fmt.Fprintln(w)
-	renderHostSection(w, header.HostInfo)
-	fmt.Fprintln(w)
 }
 
 func renderServerSection(w io.Writer, buildInfo, replicationInfo map[string]any) {
@@ -89,8 +149,9 @@ func renderServerSection(w io.Writer, buildInfo, replicationInfo map[string]any)
 	multiplexingAPI := stringValue(buildInfo, "multiplexingAPI")
 	gitSHA := stringValue(buildInfo, "gitSHA1")
 	gitDirty, hasGitDirty := boolValue(buildInfo, "gitDirty")
+	hz := int(numberValue(buildInfo, "hz"))
+	maxClients := int(numberValue(buildInfo, "maxClients"))
 
-	fmt.Fprintln(w, "server:")
 	first := []string{}
 	if valkeyVersion != "" {
 		first = append(first, "Valkey "+valkeyVersion)
@@ -106,6 +167,16 @@ func renderServerSection(w io.Writer, buildInfo, replicationInfo map[string]any)
 	}
 	if redisVersion != "" {
 		fmt.Fprintf(w, "  redis_version: %s compatibility\n", redisVersion)
+	}
+	if hz > 0 || maxClients > 0 {
+		parts := []string{}
+		if hz > 0 {
+			parts = append(parts, fmt.Sprintf("hz=%d", hz))
+		}
+		if maxClients > 0 {
+			parts = append(parts, fmt.Sprintf("maxclients=%d", maxClients))
+		}
+		fmt.Fprintf(w, "  %s\n", strings.Join(parts, " "))
 	}
 	buildParts := []string{}
 	if buildID != "" {
@@ -140,28 +211,31 @@ func renderServerSection(w io.Writer, buildInfo, replicationInfo map[string]any)
 }
 
 func renderTopologySection(w io.Writer, replicationInfo map[string]any) {
-	fmt.Fprintln(w, "topology:")
+	fmt.Fprintln(w, "  topology:")
 	role := normalizeRole(stringValue(replicationInfo, "role"))
 	if role == "" {
 		role = "unknown"
 	}
-	fmt.Fprintf(w, "  role: %s\n", role)
+	fmt.Fprintf(w, "    role: %s\n", role)
 	replicas := int(numberValue(replicationInfo, "replicas"))
 	if names := stringSlice(replicationInfo, "replicaNames"); len(names) > 0 {
-		fmt.Fprintf(w, "  replicas: %d (%s)\n", replicas, strings.Join(names, ", "))
+		fmt.Fprintf(w, "    replicas: %d (%s)\n", replicas, strings.Join(names, ", "))
 	} else {
-		fmt.Fprintf(w, "  replicas: %d\n", replicas)
+		fmt.Fprintf(w, "    replicas: %d\n", replicas)
 	}
 	clusterEnabled, _ := boolValue(replicationInfo, "clusterEnabled")
 	cluster := "disabled"
 	if clusterEnabled {
 		cluster = "enabled"
 	}
-	fmt.Fprintf(w, "  cluster: %s\n", cluster)
+	fmt.Fprintf(w, "    cluster: %s\n", cluster)
 }
 
 func renderHostSection(w io.Writer, hostInfo map[string]any) {
-	fmt.Fprintln(w, "host:")
+	if hostInfo == nil {
+		return
+	}
+	fmt.Fprintln(w, "hostInfo:")
 	if osValue := stringValue(hostInfo, "os"); osValue != "" {
 		fmt.Fprintf(w, "  os: %s\n", osValue)
 	}
@@ -171,52 +245,6 @@ func renderHostSection(w io.Writer, hostInfo map[string]any) {
 	if available > 0 || total > 0 {
 		fmt.Fprintf(w, "  memory: %s available / %s total\n", formatBinaryMB(available), formatBinaryMB(total))
 	}
-}
-
-func renderRows(w io.Writer, rows []derive.Row, preferred []string) error {
-	if len(rows) == 0 {
-		_, err := fmt.Fprintln(w, "no derived rows")
-		return err
-	}
-	cols := orderedColumns(rows, preferred)
-	widths := make(map[string]int, len(cols))
-	for _, col := range cols {
-		widths[col] = len(col)
-	}
-	for _, row := range rows {
-		for _, col := range cols {
-			value := formatRowValue(row, col)
-			if len(value) > widths[col] {
-				widths[col] = len(value)
-			}
-		}
-	}
-	writeHeader := func() {
-		for i, col := range cols {
-			if i > 0 {
-				fmt.Fprint(w, " ")
-			}
-			fmt.Fprintf(w, "%*s", widths[col], col)
-		}
-		fmt.Fprintln(w)
-	}
-	writeHeader()
-	for _, row := range rows {
-		if row.ProcessMarker != "" {
-			fmt.Fprintln(w, row.ProcessMarker)
-		}
-		if row.Marker != "" {
-			fmt.Fprintf(w, "# %s\n", row.Marker)
-		}
-		for i, col := range cols {
-			if i > 0 {
-				fmt.Fprint(w, " ")
-			}
-			fmt.Fprintf(w, "%*s", widths[col], formatRowValue(row, col))
-		}
-		fmt.Fprintln(w)
-	}
-	return nil
 }
 
 func renderCommands(w io.Writer, rows []derive.CommandRow) error {
@@ -254,13 +282,6 @@ func orderedColumns(rows []derive.Row, preferred []string) []string {
 		cols = append(cols, extra...)
 	}
 	return cols
-}
-
-func formatRowValue(row derive.Row, col string) string {
-	if col == "time" {
-		return row.Time.Format("2006-01-02T15:04:05Z")
-	}
-	return formatValue(row.Values[col])
 }
 
 func formatValue(v any) string {

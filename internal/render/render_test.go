@@ -59,10 +59,13 @@ func TestReportRendersCompactHeader(t *testing.T) {
 	out := buf.String()
 	checks := []string{
 		"valkey-ftdcstat report",
+		"metricsRange:",
+		"serverInfo:",
 		"Valkey 9.1.0 | standalone | primary",
 		"redis_version: 7.2.4 compatibility",
 		"role: primary",
 		"replicas: 2",
+		"hostInfo:",
 	}
 	for _, check := range checks {
 		if !strings.Contains(out, check) {
