@@ -1,0 +1,11 @@
+---
+description: Never add Cursor co-author trailers to git commits
+alwaysApply: true
+---
+
+# Git commits — no Cursor co-author
+
+When creating git commits in this repository:
+
+- Do **not** add `Co-authored-by: Cursor <cursoragent@cursor.com>` or any other Cursor co-author trailer to commit messages.
+- Commit messages should contain only the summary and body the user requested — no agent attribution lines.
