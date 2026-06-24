@@ -93,17 +93,15 @@ func main() {
 }
 
 func runWeb(w io.Writer, report derive.Report, warnings []model.Warning, display render.DisplayOptions, opts cliOptions) error {
-	if opts.View == "commandstats" {
-		return errors.New("--web is not supported for --view commandstats")
-	}
 	dataset := webui.BuildDataset(report, warnings, webui.Options{
 		View:         opts.View,
 		Avg:          opts.Avg,
 		RowsAveraged: opts.Avg > 0,
+		Verbose:      opts.Verbose,
 		TimeRange:    opts.Range,
 		TimeLocation: time.UTC,
 	})
-	if dataset.Metadata.RowCount > 5000 {
+	if opts.View != "commandstats" && dataset.Metadata.RowCount > 5000 {
 		fmt.Fprintln(os.Stderr, "warning: Large capture detected. Consider using --avg 5m or --from/--to for better browser performance.")
 	}
 	server, err := webui.NewServer(dataset)

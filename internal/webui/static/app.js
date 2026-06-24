@@ -72,18 +72,71 @@ function renderPage() {
   const topMeta = document.getElementById("top-meta");
   const subtitle = document.getElementById("subtitle");
   const avg = state.metadata.avg.enabled ? `avg ${state.metadata.avg.bucket}` : "raw intervals";
-  subtitle.textContent = `${state.metadata.view} view • ${state.metadata.rowCount} plotted rows • ${avg} • ${formatRange(state.metadata.timeRange)}`;
+  const rowLabel = state.data.commands ? `${state.data.commands.length} commands` : `${state.metadata.rowCount} plotted rows`;
+  subtitle.textContent = `${state.metadata.view} view • ${rowLabel} • ${avg} • ${formatRange(state.metadata.timeRange)}`;
   topMeta.innerHTML = "";
   addPill(topMeta, `view=${state.metadata.view}`);
   addPill(topMeta, state.metadata.avg.enabled ? `avg=${state.metadata.avg.bucket}` : "avg=off");
-  addPill(topMeta, `${state.metadata.rowCount} rows`);
+  addPill(topMeta, rowLabel);
   if (state.metadata.timeRange.from) addPill(topMeta, `from=${state.metadata.timeRange.from}`);
   if (state.metadata.timeRange.to) addPill(topMeta, `to=${state.metadata.timeRange.to}`);
   document.getElementById("metadata").textContent = state.metadata.headerText || "";
   renderZoomStatus();
   renderWarnings();
+  renderCommandstatsTable();
   renderMetricGroups();
   renderCharts();
+}
+
+function renderCommandstatsTable() {
+  const root = document.getElementById("commandstats");
+  const sidebar = document.querySelector(".sidebar");
+  const commands = state.data.commands || [];
+  if (!commands.length) {
+    root.hidden = true;
+    root.innerHTML = "";
+    if (sidebar) sidebar.hidden = false;
+    return;
+  }
+  root.hidden = false;
+  if (sidebar) sidebar.hidden = true;
+  const table = document.createElement("table");
+  table.className = "commandstats-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>command</th>
+        <th>calls</th>
+        <th>calls/s</th>
+        <th>usec/call</th>
+        <th>share%</th>
+      </tr>
+    </thead>
+  `;
+  const body = document.createElement("tbody");
+  for (const row of commands) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(row.command)}</td>
+      <td>${formatValue(row.calls, "number")}</td>
+      <td>${formatValue(row.callsPerSec, "number")}</td>
+      <td>${formatValue(row.usecPerCall, "number")}</td>
+      <td>${formatValue(row.sharePct, "number")}</td>
+    `;
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+  root.innerHTML = "";
+  const title = document.createElement("h2");
+  title.textContent = "commandstats";
+  root.append(title, table);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 function renderZoomStatus() {

@@ -27,6 +27,7 @@ type Options struct {
 	View         string
 	Avg          time.Duration
 	RowsAveraged bool
+	Verbose      bool
 	TimeRange    model.TimeRange
 	TimeLocation *time.Location
 }
@@ -48,10 +49,19 @@ type MetadataResponse struct {
 }
 
 type DataResponse struct {
-	View     string              `json:"view"`
-	Avg      AvgInfo             `json:"avg"`
-	Sections map[string][]string `json:"sections"`
-	Rows     []DataRow           `json:"rows"`
+	View      string              `json:"view"`
+	Avg       AvgInfo             `json:"avg"`
+	Sections  map[string][]string `json:"sections"`
+	Rows      []DataRow           `json:"rows"`
+	Commands  []CommandRow        `json:"commands,omitempty"`
+}
+
+type CommandRow struct {
+	Command     string  `json:"command"`
+	Calls       float64 `json:"calls"`
+	CallsPerSec float64 `json:"callsPerSec"`
+	UsecPerCall float64 `json:"usecPerCall"`
+	SharePct    float64 `json:"sharePct"`
 }
 
 type AvgInfo struct {
@@ -104,6 +114,9 @@ func ResolveListenAddress(listen string) string {
 }
 
 func BuildDataset(report derive.Report, warnings []model.Warning, opts Options) Dataset {
+	if report.View == "commandstats" {
+		return buildCommandstatsDataset(report, warnings, opts)
+	}
 	loc := opts.TimeLocation
 	if loc == nil {
 		loc = time.UTC
@@ -112,7 +125,7 @@ func BuildDataset(report derive.Report, warnings []model.Warning, opts Options) 
 	if opts.Avg > 0 && !opts.RowsAveraged {
 		rows = aggregate.AverageRows(rows, opts.Avg)
 	}
-	sections := buildSections(report.View, report.Columns)
+	sections := buildSections(report.View, report.Columns, opts.Verbose)
 	return Dataset{
 		Metadata: MetadataResponse{
 			View:       report.View,
@@ -252,35 +265,25 @@ func (s *Server) route(path string) ([]byte, string, int) {
 	}
 }
 
-func buildSections(view string, columns []string) []Section {
-	metrics := make([]Metric, 0, len(columns))
-	for _, column := range columns {
-		if column == "time" {
-			continue
-		}
-		metrics = append(metrics, Metric{
-			Column:   column,
-			Label:    column,
-			JSONName: column,
-			Format:   "number",
-			Default:  defaultMetric(view, column),
-		})
+func buildCommandstatsDataset(report derive.Report, warnings []model.Warning, opts Options) Dataset {
+	loc := opts.TimeLocation
+	if loc == nil {
+		loc = time.UTC
 	}
-	if len(metrics) == 0 {
-		return nil
-	}
-	return []Section{{Name: view, Metrics: metrics}}
-}
-
-func defaultMetric(view, column string) bool {
-	if view != "summary" {
-		return true
-	}
-	switch column {
-	case "ops/s", "hit%", "memMB", "cli", "load1", "inKB/s", "outKB/s", "repl":
-		return true
-	default:
-		return false
+	commands := buildCommandRows(report.Commands)
+	return Dataset{
+		Metadata: MetadataResponse{
+			View:       report.View,
+			TimeRange:  timeRangeInfo(opts.TimeRange, loc),
+			HeaderText: render.HeaderText(report.Header),
+			Metadata:   report.Metadata.Summary(),
+			Warnings:   append([]model.Warning(nil), warnings...),
+			RowCount:   len(commands),
+		},
+		Data: DataResponse{
+			View:     report.View,
+			Commands: commands,
+		},
 	}
 }
 

@@ -10,6 +10,28 @@ type tableLayout struct {
 	Sections []tableSection
 }
 
+// ViewSection names a chart group and the report columns it contains.
+type ViewSection struct {
+	Name    string
+	Columns []string
+}
+
+// ViewSections maps a view and its columns into chart/table section groups.
+func ViewSections(view string, columns []string) []ViewSection {
+	layout := LayoutForView(view, columns)
+	out := make([]ViewSection, 0, len(layout.Sections))
+	for _, sec := range layout.Sections {
+		if sec.End <= sec.Start {
+			continue
+		}
+		out = append(out, ViewSection{
+			Name:    sec.Name,
+			Columns: append([]string(nil), layout.Columns[sec.Start:sec.End]...),
+		})
+	}
+	return out
+}
+
 func LayoutForView(view string, columns []string) tableLayout {
 	if len(columns) == 0 {
 		return tableLayout{}

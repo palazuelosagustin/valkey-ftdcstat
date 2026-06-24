@@ -52,7 +52,15 @@ valkey-ftdcstat diagnostic.data --web --listen 127.0.0.1:8080
 `--web` cannot be combined with `--json`. For large captures, prefer `--avg` or
 `--from`/`--to` to keep browser rendering responsive.
 
-### Report header
+The web UI groups charts by section:
+
+- **summary** — `server`, `memory`, `stats`, `clients`, `replication`, `host`
+- **host** — `host / CPU`, `host / Memory`, `host / Disks`
+- **latency** — fallback gauges plus dynamic `latency / events` columns
+- **memory**, **clients**, **network**, **replication** — extra subpanels when `--verbose` is set
+- **commandstats** — command mix table (no time-series charts)
+
+Views:
 
 Terminal output includes:
 
