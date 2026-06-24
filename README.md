@@ -127,3 +127,7 @@ is optional local data (gitignored).
 
 Regenerate golden files after intentional output changes — see
 [skills/valkey-ftdcstat-skill/references/api_reference.md](skills/valkey-ftdcstat-skill/references/api_reference.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
