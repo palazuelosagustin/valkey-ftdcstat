@@ -1,0 +1,31 @@
+valkey-ftdcstat report
+path:    testfixtures/diagnostic.data
+files:   1
+samples: 3
+range:   2026-06-20T11:59:11Z .. 2026-06-20T11:59:12Z  (0s)
+
+metricsRange:
+  start: 2026-06-20T11:59:12Z
+  end:   2026-06-20T11:59:12Z
+
+serverInfo:
+  Valkey 9.1.0 | standalone | primary
+  redis_version: 7.2.4 compatibility
+  hz=10 maxclients=10000
+  build: gcc 13.3.0, Linux 6.8.0-110-generic x86_64, epoll
+  git: unknown dirty
+  topology:
+    role: primary
+    replicas: 0
+    cluster: disabled
+
+hostInfo:
+  os: Linux 6.8.0-110-generic x86_64
+  memory: 28.3 GiB available / 31.3 GiB total
+
+note: no LATENCY LATEST events in capture; showing slowlog, blocked clients, fork, and event-loop gauges
+
+                     |                  latency
+datetime             | slowlog slowMaxMs blocked forkUsec eloopUs
+--- valkey process: pid=831891 run_id=- time=2026-06-20T11:59:12Z ---
+2026-06-20T11:59:12Z |       0         -       -        -      70

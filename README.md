@@ -12,8 +12,13 @@ go build -o valkey-ftdcstat ./cmd/valkey-ftdcstat
 ## Usage
 
 ```bash
-valkey-ftdcstat <path-to-diagnostic-data-directory> [--view VIEW] [--interval N] [--avg DURATION] [--device DEVICE] [--from ISO_TIME] [--to ISO_TIME] [--json] [--web] [--listen ADDR] [--verbose]
+valkey-ftdcstat <path-to-diagnostic-data-directory> [--view VIEW] [--interval N] [--avg DURATION] [--top N] [--device DEVICE] [--from ISO_TIME] [--to ISO_TIME] [--json] [--web] [--listen ADDR] [--verbose]
 ```
+
+See [docs/metric-reference.md](docs/metric-reference.md) for column definitions, formulas, and
+diagnostic hints. Planned work is tracked in [docs/backlog.md](docs/backlog.md).
+
+An agent skill bundle lives at [skills/valkey-ftdcstat-skill/](skills/valkey-ftdcstat-skill/).
 
 ### Time range
 
@@ -106,3 +111,16 @@ valkey-ftdcstat diagnostic.data --view commandstats
 
 `--verbose` expands columns for `memory`, `clients`, `replication`, `host`, and
 `network` views.
+
+## Tests
+
+```bash
+go test ./...
+```
+
+Golden CLI output is pinned under `testfixtures/outputs/` against the small
+fixture in `testfixtures/diagnostic.data/`. The full capture under `testdata/`
+is optional local data (gitignored).
+
+Regenerate golden files after intentional output changes — see
+[skills/valkey-ftdcstat-skill/references/api_reference.md](skills/valkey-ftdcstat-skill/references/api_reference.md).

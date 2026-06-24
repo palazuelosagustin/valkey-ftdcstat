@@ -53,6 +53,23 @@ func TestParseArgsTimeRange(t *testing.T) {
 	}
 }
 
+func TestParseArgsTop(t *testing.T) {
+	opts, err := parseArgs([]string{"diagnostic.data", "--top", "5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.TopCommands != 5 {
+		t.Fatalf("top=%d", opts.TopCommands)
+	}
+	opts, err = parseArgs([]string{"diagnostic.data"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.TopCommands != -1 {
+		t.Fatalf("default top=%d", opts.TopCommands)
+	}
+}
+
 func TestParseArgsDeviceHostOnly(t *testing.T) {
 	opts, err := parseArgs([]string{"diagnostic.data", "--view", "host", "--device", "sda"})
 	if err != nil {
