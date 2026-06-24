@@ -4,19 +4,16 @@ import (
 	"testing"
 	"time"
 
+	"valkey-ftdcstat/internal/flatten"
 	"valkey-ftdcstat/internal/model"
 )
 
 func TestBuildSummaryRows(t *testing.T) {
-	capture := model.Capture{
-		Path:  "diagnostic.data",
-		Files: []string{"metrics.1.vkftdc"},
-		Samples: []model.Sample{
-			sample(0, 1000, 2000, 5000, 1000, 100<<20, 150<<20, 10, 1, 1.0, 1000, 500, 10000, 100, 5000, 100, "master", 2),
-			sample(60_000, 1120, 2600, 5600, 1120, 110<<20, 160<<20, 12, 0, 1.2, 1100, 540, 10300, 110, 5600, 110, "master", 2),
-		},
+	samples := []model.MetricSample{
+		metricSample(0, 1000, 2000, 5000, 1000, 100<<20, 150<<20, 10, 1, 1.0, 1000, 500, 10000, 100, 5000, 100, "master", 2),
+		metricSample(60_000, 1120, 2600, 5600, 1120, 110<<20, 160<<20, 12, 0, 1.2, 1100, 540, 10300, 110, 5600, 110, "master", 2),
 	}
-	report, err := Build(capture, Options{View: "summary", Interval: time.Minute})
+	report, err := Build(model.Capture{MetricSamples: samples}, Options{View: "summary", Interval: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,22 +21,46 @@ func TestBuildSummaryRows(t *testing.T) {
 		t.Fatalf("rows=%d", len(report.Rows))
 	}
 	row := report.Rows[0]
-	if row["ops/s"] != float64(10) {
-		t.Fatalf("ops/s=%v", row["ops/s"])
+	if row.Values["ops/s"] != float64(10) {
+		t.Fatalf("ops/s=%v", row.Values["ops/s"])
 	}
-	if row["conn/s"] != float64(2) {
-		t.Fatalf("conn/s=%v", row["conn/s"])
+	if row.Values["conn/s"] != float64(2) {
+		t.Fatalf("conn/s=%v", row.Values["conn/s"])
 	}
-	if row["repl"] != "master" {
-		t.Fatalf("repl=%v", row["repl"])
+	if row.Values["repl"] != "master" {
+		t.Fatalf("repl=%v", row.Values["repl"])
 	}
 }
 
-func sample(ts, conns, cmds, hits, misses, used, rss int64, clients, blocked int, load float64, user, sys, idle, iowait, ctxt, procs int64, role string, replicas int) model.Sample {
-	return model.Sample{
+func TestStreamerDetectsRestart(t *testing.T) {
+	first := metricSample(0, 0, 100, 0, 0, 1<<20, 2<<20, 1, 0, 0, 0, 0, 1000, 0, 0, 0, "master", 0)
+	first.Text[pathRunID] = "abc"
+	first.Values[pathProcessID] = 100
+	first.Values[pathUptime] = 3600
+	second := metricSample(60_000, 0, 200, 0, 0, 1<<20, 2<<20, 1, 0, 0, 0, 0, 1000, 0, 0, 0, "master", 0)
+	second.Text[pathRunID] = "def"
+	second.Values[pathProcessID] = 200
+	second.Values[pathUptime] = 10
+
+	streamer := NewStreamer(Options{View: "summary", Interval: time.Minute})
+	if _, ok := streamer.Add(first); ok {
+		t.Fatal("first sample should not emit row")
+	}
+	row, ok := streamer.Add(second)
+	if !ok {
+		t.Fatal("expected row")
+	}
+	if row.ProcessMarker == "" {
+		t.Fatal("expected restart marker")
+	}
+}
+
+func metricSample(ts int64, conns, cmds, hits, misses, used, rss int64, clients, blocked int, load float64, user, sys, idle, iowait, ctxt, procs int64, role string, replicas int) model.MetricSample {
+	return flatten.Sample(model.Sample{
 		TsMS: ts,
 		Valkey: model.ValkeyMetrics{
 			Info: model.InfoSections{
+				Server: map[string]any{"process_id": float64(1), "run_id": role + "-run"},
 				Clients: map[string]any{"connected_clients": float64(clients), "blocked_clients": float64(blocked)},
 				Memory:  map[string]any{"used_memory": float64(used), "used_memory_rss": float64(rss), "maxmemory": float64(200 << 20)},
 				Stats: map[string]any{
@@ -60,7 +81,8 @@ func sample(ts, conns, cmds, hits, misses, used, rss int64, clients, blocked int
 			Slowlog: model.SlowlogSnapshot{Len: 0},
 		},
 		Host: model.HostMetrics{
-			LoadAvg: map[string]any{"1m": load},
+			Supported: true,
+			LoadAvg:   map[string]any{"1m": load},
 			CPU: map[string]any{
 				"user":          float64(user),
 				"system":        float64(sys),
@@ -79,5 +101,5 @@ func sample(ts, conns, cmds, hits, misses, used, rss int64, clients, blocked int
 			},
 			Memory: map[string]string{"MemAvailable": "8192000 kB", "MemFree": "4096000 kB", "Buffers": "128000 kB", "Cached": "512000 kB"},
 		},
-	}
+	}, "test", 0)
 }

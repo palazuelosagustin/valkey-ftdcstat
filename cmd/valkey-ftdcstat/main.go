@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"valkey-ftdcstat/internal/derive"
+	"valkey-ftdcstat/internal/discovery"
 	"valkey-ftdcstat/internal/reader"
 	"valkey-ftdcstat/internal/render"
 )
@@ -32,21 +33,32 @@ func main() {
 		os.Exit(2)
 	}
 
-	capture, err := reader.ReadCapture(flag.Arg(0))
+	path := flag.Arg(0)
+	files, warnings, err := discovery.Discover(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if len(capture.Samples) == 0 {
-		fmt.Fprintln(os.Stderr, "no samples found")
+	for _, warning := range warnings {
+		fmt.Fprintln(os.Stderr, "warning:", warning.String())
+	}
+
+	metadata, metaWarnings, err := reader.ReadMetadata(path, files)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	for _, warning := range metaWarnings {
+		fmt.Fprintln(os.Stderr, "warning:", warning.String())
 	}
 
 	opts := derive.Options{
-		View:     *view,
-		Interval: time.Duration(*interval) * time.Second,
+		View:         *view,
+		Interval:     time.Duration(*interval) * time.Second,
+		Metadata:     metadata,
+		TimeLocation: time.UTC,
 	}
-	report, err := derive.Build(capture, opts)
+	report, err := derive.BuildFromReader(path, files, metadata, opts)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

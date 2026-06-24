@@ -3,10 +3,13 @@ package model
 import "time"
 
 type Capture struct {
-	Path     string   `json:"path"`
-	Files    []string `json:"files"`
-	Samples  []Sample `json:"samples"`
-	Metadata []any    `json:"metadata,omitempty"`
+	Path            string              `json:"path"`
+	Files           []string            `json:"files"`
+	Samples         []Sample            `json:"samples,omitempty"`
+	MetricSamples   []MetricSample      `json:"metricSamples,omitempty"`
+	Metadata        Metadata            `json:"metadata,omitempty"`
+	FileMetadata    []any               `json:"fileMetadata,omitempty"`
+	Warnings        []Warning           `json:"warnings,omitempty"`
 }
 
 type Sample struct {
