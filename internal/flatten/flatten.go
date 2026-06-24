@@ -53,6 +53,15 @@ func Sample(sample model.Sample, source string, sourceIndex int) model.MetricSam
 	}
 
 	putFloat(out, pathValkey+"slowlog.len", sample.Valkey.Slowlog.Len)
+	var slowMaxUSec float64
+	for _, entry := range sample.Valkey.Slowlog.Entries {
+		if entry.DurationUSec > slowMaxUSec {
+			slowMaxUSec = entry.DurationUSec
+		}
+	}
+	if slowMaxUSec > 0 {
+		putFloat(out, pathValkey+"slowlog.max_ms", slowMaxUSec/1000.0)
+	}
 
 	host := sample.Host
 	if host.Supported || host.Enabled || len(host.CPU) > 0 || host.Disk.Diskstats != "" {

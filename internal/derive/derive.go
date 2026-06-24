@@ -22,6 +22,9 @@ const (
 	pathStatsEvicted    = "valkey.info.stats.evicted_keys"
 	pathStatsRejected   = "valkey.info.stats.rejected_connections"
 	pathStatsErrors     = "valkey.info.stats.total_error_replies"
+	pathStatsLatestFork = "valkey.info.stats.latest_fork_usec"
+	pathStatsEloopUs    = "valkey.info.stats.instantaneous_eventloop_duration_usec"
+	pathSlowlogMaxMs    = "valkey.slowlog.max_ms"
 	pathMemUsed         = "valkey.info.memory.used_memory"
 	pathMemRSS          = "valkey.info.memory.used_memory_rss"
 	pathMemMax          = "valkey.info.memory.maxmemory"
@@ -82,6 +85,7 @@ type Report struct {
 	Commands    []CommandRow     `json:"commands,omitempty"`
 	Metadata    model.Metadata   `json:"metadata,omitempty"`
 	Latest      map[string]any   `json:"latest,omitempty"`
+	LatencyNote string           `json:"latencyNote,omitempty"`
 }
 
 type CommandRow struct {
@@ -182,7 +186,11 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 		Header:      buildHeader(last),
 	}
 	if opts.View == "latency" && streamer != nil {
-		report.Columns = latencyColumns(streamer.LatencyEvents())
+		events := streamer.LatencyEvents()
+		report.Columns = latencyColumns(events)
+		if len(events) == 0 {
+			report.LatencyNote = "no LATENCY LATEST events in capture; showing slowlog, blocked clients, fork, and event-loop gauges"
+		}
 	} else {
 		report.Columns = viewColumns(opts.View, opts)
 	}
@@ -394,14 +402,28 @@ func fillNetworkVerbose(row *Row, c calculator, reset bool) {
 }
 
 func fillLatency(row *Row, c calculator) {
+	setGauge(row, "slowlog", c, pathSlowlogLen, identity)
+	setGauge(row, "slowMaxMs", c, pathSlowlogMaxMs, identity)
+	setGauge(row, "blocked", c, pathClientsBlocked, identity)
+	setGauge(row, "forkUsec", c, pathStatsLatestFork, identity)
+	setGauge(row, "eloopUs", c, pathStatsEloopUs, identity)
 	prefix := "valkey.latency_latest."
 	for path, value := range c.cur.Values {
-		if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, ".latest_ms") {
+		if !strings.HasPrefix(path, prefix) {
 			continue
 		}
-		event := strings.TrimSuffix(strings.TrimPrefix(path, prefix), ".latest_ms")
-		if event != "" {
-			put(row, event, value)
+		rest := strings.TrimPrefix(path, prefix)
+		switch {
+		case strings.HasSuffix(rest, ".latest_ms"):
+			event := strings.TrimSuffix(rest, ".latest_ms")
+			if event != "" {
+				put(row, event, value)
+			}
+		case strings.HasSuffix(rest, ".max_ms"):
+			event := strings.TrimSuffix(rest, ".max_ms")
+			if event != "" {
+				put(row, event+"Max", value)
+			}
 		}
 	}
 }
@@ -853,7 +875,8 @@ func viewColumns(view string, opts Options) []string {
 		}
 		return cols
 	case "latency":
-		return []string{"time"}
+		cols := []string{"time"}
+		return append(cols, latencyBaseColumns...)
 	default:
 		return []string{"time"}
 	}

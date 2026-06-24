@@ -28,7 +28,7 @@ replication   role, replicas, and replication offset
 commandstats  command mix over the full capture
 host          vmstat-style host metrics
 network       Valkey and host network throughput
-latency       LATENCY LATEST event gauges
+latency       LATENCY LATEST event gauges plus slowlog/blocked/fork/event-loop fallbacks
 ```
 
 Examples:

@@ -37,13 +37,15 @@ func TestLatencyViewCollectsEvents(t *testing.T) {
 	first := metricSample(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "master", 0, nil)
 	second := metricSample(60_000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "master", 0, nil)
 	second.Values["valkey.latency_latest.fork.latest_ms"] = 12
+	second.Values["valkey.latency_latest.fork.max_ms"] = 20
 	second.Values["valkey.latency_latest.active-defrag-cycle.latest_ms"] = 3
+	second.Values["valkey.latency_latest.active-defrag-cycle.max_ms"] = 9
 
 	report, err := Build(model.Capture{MetricSamples: []model.MetricSample{first, second}}, Options{View: "latency", Interval: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(report.Columns) != 3 {
+	if len(report.Columns) != 10 {
 		t.Fatalf("columns=%v", report.Columns)
 	}
 	if len(report.Rows) != 1 {
@@ -51,6 +53,26 @@ func TestLatencyViewCollectsEvents(t *testing.T) {
 	}
 	if report.Rows[0].Values["fork"] != float64(12) {
 		t.Fatalf("fork=%v", report.Rows[0].Values["fork"])
+	}
+	if report.Rows[0].Values["forkMax"] != float64(20) {
+		t.Fatalf("forkMax=%v", report.Rows[0].Values["forkMax"])
+	}
+}
+
+func TestLatencyViewFallbackWhenNoEvents(t *testing.T) {
+	first := metricSample(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "master", 0, nil)
+	second := metricSample(60_000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "master", 0, nil)
+	second.Values[pathStatsEloopUs] = 55
+
+	report, err := Build(model.Capture{MetricSamples: []model.MetricSample{first, second}}, Options{View: "latency", Interval: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.LatencyNote == "" {
+		t.Fatal("expected latency note")
+	}
+	if report.Rows[0].Values["eloopUs"] != float64(55) {
+		t.Fatalf("eloopUs=%v", report.Rows[0].Values["eloopUs"])
 	}
 }
 

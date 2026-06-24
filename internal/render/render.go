@@ -35,6 +35,9 @@ func Report(w io.Writer, report derive.Report, jsonOut bool) error {
 	if report.View == "commandstats" {
 		return renderCommands(w, report.Commands)
 	}
+	if report.LatencyNote != "" {
+		fmt.Fprintf(w, "note: %s\n\n", report.LatencyNote)
+	}
 	return renderRows(w, report.Rows, report.Columns)
 }
 
