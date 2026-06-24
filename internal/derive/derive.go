@@ -60,6 +60,7 @@ type Options struct {
 	View           string
 	Interval       time.Duration
 	GapThreshold   time.Duration
+	Device         string
 	Verbose        bool
 	Metadata       model.Metadata
 	TimeLocation   *time.Location
@@ -133,7 +134,7 @@ func BuildStream(path string, files []discovery.MetricFile, metadata model.Metad
 	return finalizeReport(path, filePaths(files), metadata, samples, first, last, rows, opts, streamer)
 }
 
-func BuildFromReader(path string, files []discovery.MetricFile, metadata model.Metadata, opts Options) (Report, error) {
+func BuildFromReader(path string, files []discovery.MetricFile, metadata model.Metadata, opts Options, streamOpts reader.StreamOptions) (Report, error) {
 	opts = normalizeOptions(opts, metadata)
 	var rows []Row
 	var samples []model.MetricSample
@@ -141,7 +142,7 @@ func BuildFromReader(path string, files []discovery.MetricFile, metadata model.M
 	var haveFirst bool
 	streamer := NewStreamer(opts)
 
-	_, streamWarnings, err := reader.StreamSamples(files, reader.StreamOptions{}, func(sample model.MetricSample) error {
+	_, streamWarnings, err := reader.StreamSamples(files, streamOpts, func(sample model.MetricSample) error {
 		samples = append(samples, sample)
 		if !haveFirst {
 			first = sample
@@ -326,7 +327,7 @@ func fillRow(row *Row, c calculator, opts Options, reset bool) {
 			fillReplicationVerbose(row, c)
 		}
 	case "host":
-		fillHost(row, c, reset)
+		fillHost(row, c, reset, opts.Device)
 		if opts.Verbose {
 			fillHostVerbose(row, c)
 		}
@@ -512,7 +513,7 @@ func fillReplication(row *Row, c calculator, reset bool) {
 	}
 }
 
-func fillHost(row *Row, c calculator, reset bool) {
+func fillHost(row *Row, c calculator, reset bool, device string) {
 	setGauge(row, "r", c, "host.cpu.procs_running", identity)
 	setGauge(row, "b", c, "host.cpu.procs_blocked", identity)
 	swapTotal, _ := c.current("host.memory.SwapTotal.mb")
@@ -522,8 +523,8 @@ func fillHost(row *Row, c calculator, reset bool) {
 	setGauge(row, "buff", c, "host.memory.Buffers.mb", identity)
 	setGauge(row, "cache", c, "host.memory.Cached.mb", identity)
 	if !reset {
-		rdPrev, wrPrev := parseDiskstats(c.prev.GetText(pathHostDiskstats))
-		rdCurr, wrCurr := parseDiskstats(c.cur.GetText(pathHostDiskstats))
+		rdPrev, wrPrev := parseDiskstats(c.prev.GetText(pathHostDiskstats), device)
+		rdCurr, wrCurr := parseDiskstats(c.cur.GetText(pathHostDiskstats), device)
 		put(row, "bi", delta(rdCurr, rdPrev)/c.dt)
 		put(row, "bo", delta(wrCurr, wrPrev)/c.dt)
 		setRate(row, "forks/s", c, "host.cpu.processes")
@@ -737,11 +738,15 @@ func setGauge(row *Row, key string, c calculator, path string, transform valueTr
 	}
 }
 
-func parseDiskstats(blob string) (readKB, writeKB float64) {
+func parseDiskstats(blob string, device string) (readKB, writeKB float64) {
 	lines := strings.Split(blob, "\n")
 	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 14 {
+			continue
+		}
+		name := strings.TrimSuffix(fields[2], ":")
+		if device != "" && name != device {
 			continue
 		}
 		readSectors := parseFloat(fields[5])

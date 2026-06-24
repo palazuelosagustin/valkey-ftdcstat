@@ -12,8 +12,45 @@ go build -o valkey-ftdcstat ./cmd/valkey-ftdcstat
 ## Usage
 
 ```bash
-valkey-ftdcstat <path-to-diagnostic-data-directory> [--view VIEW] [--interval N] [--verbose] [--json]
+valkey-ftdcstat <path-to-diagnostic-data-directory> [--view VIEW] [--interval N] [--avg DURATION] [--device DEVICE] [--from ISO_TIME] [--to ISO_TIME] [--json] [--web] [--listen ADDR] [--verbose]
 ```
+
+### Time range
+
+`--from` is inclusive and `--to` is exclusive:
+
+```bash
+valkey-ftdcstat diagnostic.data --from "2026-06-20T12:00:00" --to "2026-06-20T18:00:00"
+```
+
+### Averaging
+
+`--avg` averages derived rows into fixed UTC wall-clock buckets between `1m`
+and `15m`. It cannot be combined with `--interval`.
+
+```bash
+valkey-ftdcstat diagnostic.data --view summary --avg 5m
+```
+
+### Host disk filter
+
+`--device` limits host-view disk rates to one block device from `/proc/diskstats`:
+
+```bash
+valkey-ftdcstat diagnostic.data --view host --device sda
+```
+
+### Web UI
+
+`--web` starts a local HTTP server and still prints the normal terminal table.
+
+```bash
+valkey-ftdcstat diagnostic.data --web --view summary --avg 5m
+valkey-ftdcstat diagnostic.data --web --listen 127.0.0.1:8080
+```
+
+`--web` cannot be combined with `--json`. For large captures, prefer `--avg` or
+`--from`/`--to` to keep browser rendering responsive.
 
 Views:
 

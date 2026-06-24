@@ -53,7 +53,7 @@ func TestReportRendersCompactHeader(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if err := Report(&buf, report, false); err != nil {
+	if err := Report(&buf, report, DisplayOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()

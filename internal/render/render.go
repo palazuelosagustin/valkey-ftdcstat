@@ -13,14 +13,23 @@ import (
 	"valkey-ftdcstat/internal/model"
 )
 
-func Report(w io.Writer, report derive.Report, jsonOut bool) error {
-	if jsonOut {
+type DisplayOptions struct {
+	JSON      bool
+	WebURL    string
+	AvgBucket time.Duration
+}
+
+func Report(w io.Writer, report derive.Report, opts DisplayOptions) error {
+	if opts.JSON {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(report)
 	}
 
 	fmt.Fprintln(w, "valkey-ftdcstat report")
+	if opts.WebURL != "" {
+		fmt.Fprintf(w, "web UI: %s\n", opts.WebURL)
+	}
 	fmt.Fprintf(w, "path:    %s\n", report.Path)
 	fmt.Fprintf(w, "files:   %d\n", len(report.Files))
 	fmt.Fprintf(w, "samples: %d\n", report.SampleCount)
@@ -32,6 +41,10 @@ func Report(w io.Writer, report derive.Report, jsonOut bool) error {
 	fmt.Fprintln(w)
 	renderCompactHeader(w, report.Header)
 
+	if opts.AvgBucket > 0 {
+		fmt.Fprintf(w, "Averaging: %s buckets; datetime is bucket start; values are averaged per bucket.\n\n", FormatAvgBucket(opts.AvgBucket))
+	}
+
 	if report.View == "commandstats" {
 		return renderCommands(w, report.Commands)
 	}
@@ -39,6 +52,20 @@ func Report(w io.Writer, report derive.Report, jsonOut bool) error {
 		fmt.Fprintf(w, "note: %s\n\n", report.LatencyNote)
 	}
 	return renderRows(w, report.Rows, report.Columns)
+}
+
+func HeaderText(header model.Header) string {
+	var buf strings.Builder
+	renderCompactHeader(&buf, header)
+	return strings.TrimSpace(buf.String())
+}
+
+func FormatAvgBucket(bucket time.Duration) string {
+	minutes := int(bucket / time.Minute)
+	if minutes <= 0 {
+		return bucket.String()
+	}
+	return fmt.Sprintf("%dm", minutes)
 }
 
 func renderCompactHeader(w io.Writer, header model.Header) {

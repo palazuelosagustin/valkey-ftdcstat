@@ -105,6 +105,17 @@ type Metadata struct {
 	Sidecars      []SidecarMeta  `json:"sidecars,omitempty"`
 }
 
+func (m Metadata) Summary() map[string]any {
+	return map[string]any{
+		"path":          m.Path,
+		"formatVersion": m.FormatVersion,
+		"module":        m.Module,
+		"server":        m.Server,
+		"config":        m.Config,
+		"maxClients":    m.MaxClients,
+	}
+}
+
 type SidecarMeta struct {
 	Path        string `json:"path"`
 	CurrentFile string `json:"currentFile,omitempty"`
