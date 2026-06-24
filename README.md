@@ -58,7 +58,7 @@ The web UI groups charts by section:
 - **host** — `host / CPU`, `host / Memory`, `host / Disks`
 - **latency** — fallback gauges plus dynamic `latency / events` columns
 - **memory**, **clients**, **network**, **replication** — extra subpanels when `--verbose` is set
-- **commandstats** — command mix table (no time-series charts)
+- **commandstats** — per-interval command rates (`get/s`, `set/s`, …)
 
 Views:
 
@@ -70,9 +70,13 @@ Terminal output includes:
 - **moduleConfig** when present in capture metadata (`interval-ms`, `collect-host-stats`, etc.)
 - **hostInfo** when host stats are collected
 
-The summary view prints section labels (`server`, `memory`, `stats`, `clients`,
-`replication`, `host`) above column groups separated by `|`, and repeats the
-header every 50 rows on long captures.
+The summary view prints section labels (`server`, `commands`, `memory`, `stats`,
+`clients`, `replication`, `host`) above column groups separated by `|`, and
+repeats the header every 50 rows on long captures.
+
+Top command rates (`get/s`, `set/s`, …) are included in **summary** by default
+for the busiest commands in the capture. Use `--top N` to change how many command
+columns are shown (`--top 0` shows all commands with activity).
 
 Views:
 
@@ -84,7 +88,7 @@ clients       connection counts and throughput
 cpu           Valkey and host CPU
 persistence   RDB/AOF state and slowlog length
 replication   role, replicas, and replication offset
-commandstats  command mix over the full capture
+commandstats  per-interval command rates for the busiest commands
 host          vmstat-style host metrics
 network       Valkey and host network throughput
 latency       LATENCY LATEST event gauges plus slowlog/blocked/fork/event-loop fallbacks

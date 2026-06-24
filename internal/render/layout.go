@@ -1,5 +1,7 @@
 package render
 
+import "strings"
+
 type tableSection struct {
 	Name       string
 	Start, End int
@@ -68,6 +70,9 @@ func summaryLayout(columns []string) tableLayout {
 	}
 	for i, col := range columns {
 		name := sectionFor[col]
+		if name == "" && isSummaryCommandColumn(col) {
+			name = "commands"
+		}
 		if col == "time" {
 			flush(i)
 			continue
@@ -87,11 +92,23 @@ func summaryLayout(columns []string) tableLayout {
 	return tableLayout{Columns: append([]string(nil), columns...), Sections: sections}
 }
 
+func isSummaryCommandColumn(column string) bool {
+	if !strings.HasSuffix(column, "/s") {
+		return false
+	}
+	switch column {
+	case "ops/s", "conn/s", "rej/s", "exp/s", "evict/s", "offKB/s", "inKB/s", "outKB/s":
+		return false
+	default:
+		return true
+	}
+}
+
 func summarySectionForColumn() map[string]string {
 	return map[string]string{
-		"ops/s":    "server",
-		"conn/s":   "server",
-		"hit%":     "server",
+		"ops/s":  "server",
+		"conn/s": "server",
+		"hit%":   "server",
 		"memMB":    "memory",
 		"rssMB":    "memory",
 		"frag%":    "memory",

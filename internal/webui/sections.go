@@ -3,7 +3,6 @@ package webui
 import (
 	"strings"
 
-	"valkey-ftdcstat/internal/derive"
 	"valkey-ftdcstat/internal/render"
 )
 
@@ -40,7 +39,7 @@ func buildSections(view string, columns []string, verbose bool) []Section {
 		}
 		return singleSection("network", columns)
 	case "commandstats":
-		return nil
+		return singleSection("commandstats", columns)
 	default:
 		return singleSection(view, columns)
 	}
@@ -212,20 +211,6 @@ func sectionFromColumns(name string, columns []string, view string) Section {
 	return Section{Name: name, Metrics: metrics}
 }
 
-func buildCommandRows(commands []derive.CommandRow) []CommandRow {
-	out := make([]CommandRow, 0, len(commands))
-	for _, row := range commands {
-		out = append(out, CommandRow{
-			Command:     row.Command,
-			Calls:       row.Calls,
-			CallsPerSec: row.CallsPerSec,
-			UsecPerCall: row.UsecPerCall,
-			SharePct:    row.SharePct,
-		})
-	}
-	return out
-}
-
 func filterMetricColumns(columns []string) []string {
 	out := make([]string, 0, len(columns))
 	for _, col := range columns {
@@ -293,8 +278,10 @@ func defaultMetric(view, column string) bool {
 		case "role", "replicas", "offsetMB", "offMB/s":
 			return true
 		}
+	case "commandstats":
+		return strings.HasSuffix(column, "/s")
 	}
-	if view != "summary" && view != "host" && view != "latency" {
+	if view != "summary" && view != "host" && view != "latency" && view != "commandstats" {
 		return true
 	}
 	return false

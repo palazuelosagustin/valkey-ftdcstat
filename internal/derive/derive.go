@@ -62,6 +62,7 @@ type Options struct {
 	GapThreshold   time.Duration
 	Device         string
 	Verbose        bool
+	TopCommands    int
 	Metadata       model.Metadata
 	TimeLocation   *time.Location
 }
@@ -186,6 +187,7 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 		Metadata:    metadata,
 		Header:      buildHeader(last, metadata),
 	}
+	topCommands := topCommandNames(first, last, normalizeTopCommands(opts.TopCommands))
 	if opts.View == "latency" && streamer != nil {
 		events := streamer.LatencyEvents()
 		report.Columns = latencyColumns(events)
@@ -193,18 +195,24 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 			report.LatencyNote = "no LATENCY LATEST events in capture; showing slowlog, blocked clients, fork, and event-loop gauges"
 		}
 	} else {
-		report.Columns = viewColumns(opts.View, opts)
+		switch opts.View {
+		case "summary":
+			report.Columns = summaryColumns(topCommands)
+		case "commandstats":
+			report.Columns = commandstatsColumns(topCommands)
+		default:
+			report.Columns = viewColumns(opts.View, opts)
+		}
 	}
-	switch opts.View {
-	case "commandstats":
+	report.Rows = rows
+	report.Latest = latestMap(last, opts.View)
+	if len(topCommands) > 0 {
 		report.Commands = deriveCommands(first, last)
-		report.Latest = latestMap(last, opts.View)
-		return report, nil
-	default:
-		report.Rows = rows
-		report.Latest = latestMap(last, opts.View)
-		return report, nil
+		if limit := normalizeTopCommands(opts.TopCommands); limit > 0 && len(report.Commands) > limit {
+			report.Commands = append([]CommandRow(nil), report.Commands[:limit]...)
+		}
 	}
+	return report, nil
 }
 
 type Streamer struct {
@@ -305,6 +313,9 @@ func fillRow(row *Row, c calculator, opts Options, reset bool) {
 	switch opts.View {
 	case "summary":
 		fillSummary(row, c, reset)
+		fillCommandRates(row, c, reset)
+	case "commandstats":
+		fillCommandRates(row, c, reset)
 	case "server":
 		fillServer(row, c, reset)
 	case "memory":

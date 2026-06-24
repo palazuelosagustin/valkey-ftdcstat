@@ -29,6 +29,7 @@ type cliOptions struct {
 	Web         bool
 	Listen      string
 	Verbose     bool
+	TopCommands int
 	Range       model.TimeRange
 }
 
@@ -65,6 +66,7 @@ func main() {
 		Interval:     time.Duration(opts.Interval) * time.Second,
 		Device:       opts.Device,
 		Verbose:      opts.Verbose,
+		TopCommands:  opts.TopCommands,
 		Metadata:     metadata,
 		TimeLocation: time.UTC,
 	}
@@ -74,7 +76,7 @@ func main() {
 		printError(os.Stderr, err)
 		os.Exit(1)
 	}
-	if opts.Avg > 0 && opts.View != "commandstats" {
+	if opts.Avg > 0 {
 		report.Rows = aggregate.AverageRows(report.Rows, opts.Avg)
 	}
 
@@ -101,7 +103,7 @@ func runWeb(w io.Writer, report derive.Report, warnings []model.Warning, display
 		TimeRange:    opts.Range,
 		TimeLocation: time.UTC,
 	})
-	if opts.View != "commandstats" && dataset.Metadata.RowCount > 5000 {
+	if dataset.Metadata.RowCount > 5000 {
 		fmt.Fprintln(os.Stderr, "warning: Large capture detected. Consider using --avg 5m or --from/--to for better browser performance.")
 	}
 	server, err := webui.NewServer(dataset)
@@ -121,7 +123,7 @@ func runWeb(w io.Writer, report derive.Report, warnings []model.Warning, display
 }
 
 func parseArgs(args []string) (cliOptions, error) {
-	opts := cliOptions{View: "summary", Interval: 60}
+	opts := cliOptions{View: "summary", Interval: 60, TopCommands: -1}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
@@ -192,6 +194,22 @@ func parseArgs(args []string) (cliOptions, error) {
 			opts.Device = args[i]
 		case strings.HasPrefix(arg, "--device="):
 			opts.Device = strings.TrimPrefix(arg, "--device=")
+		case arg == "--top":
+			i++
+			if i >= len(args) {
+				return opts, errors.New("--top requires a value")
+			}
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n < 0 {
+				return opts, errors.New("--top must be a non-negative integer")
+			}
+			opts.TopCommands = n
+		case strings.HasPrefix(arg, "--top="):
+			n, err := strconv.Atoi(strings.TrimPrefix(arg, "--top="))
+			if err != nil || n < 0 {
+				return opts, errors.New("--top must be a non-negative integer")
+			}
+			opts.TopCommands = n
 		case arg == "--from":
 			i++
 			if i >= len(args) {
@@ -278,7 +296,7 @@ func parseTimeArg(value string) (time.Time, error) {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintf(w, "usage: valkey-ftdcstat <path-to-diagnostic-data-directory> [--view VIEW] [--interval N] [--avg DURATION] [--device DEVICE] [--from ISO_TIME] [--to ISO_TIME] [--json] [--web] [--listen ADDR] [--verbose]\n")
+	fmt.Fprintf(w, "usage: valkey-ftdcstat <path-to-diagnostic-data-directory> [--view VIEW] [--interval N] [--avg DURATION] [--top N] [--device DEVICE] [--from ISO_TIME] [--to ISO_TIME] [--json] [--web] [--listen ADDR] [--verbose]\n")
 }
 
 func printError(w io.Writer, err error) {

@@ -53,15 +53,6 @@ type DataResponse struct {
 	Avg       AvgInfo             `json:"avg"`
 	Sections  map[string][]string `json:"sections"`
 	Rows      []DataRow           `json:"rows"`
-	Commands  []CommandRow        `json:"commands,omitempty"`
-}
-
-type CommandRow struct {
-	Command     string  `json:"command"`
-	Calls       float64 `json:"calls"`
-	CallsPerSec float64 `json:"callsPerSec"`
-	UsecPerCall float64 `json:"usecPerCall"`
-	SharePct    float64 `json:"sharePct"`
 }
 
 type AvgInfo struct {
@@ -114,9 +105,6 @@ func ResolveListenAddress(listen string) string {
 }
 
 func BuildDataset(report derive.Report, warnings []model.Warning, opts Options) Dataset {
-	if report.View == "commandstats" {
-		return buildCommandstatsDataset(report, warnings, opts)
-	}
 	loc := opts.TimeLocation
 	if loc == nil {
 		loc = time.UTC
@@ -265,27 +253,6 @@ func (s *Server) route(path string) ([]byte, string, int) {
 	}
 }
 
-func buildCommandstatsDataset(report derive.Report, warnings []model.Warning, opts Options) Dataset {
-	loc := opts.TimeLocation
-	if loc == nil {
-		loc = time.UTC
-	}
-	commands := buildCommandRows(report.Commands)
-	return Dataset{
-		Metadata: MetadataResponse{
-			View:       report.View,
-			TimeRange:  timeRangeInfo(opts.TimeRange, loc),
-			HeaderText: render.HeaderText(report.Header),
-			Metadata:   report.Metadata.Summary(),
-			Warnings:   append([]model.Warning(nil), warnings...),
-			RowCount:   len(commands),
-		},
-		Data: DataResponse{
-			View:     report.View,
-			Commands: commands,
-		},
-	}
-}
 
 func buildRows(rows []derive.Row, sections []Section, loc *time.Location) []DataRow {
 	out := make([]DataRow, 0, len(rows))

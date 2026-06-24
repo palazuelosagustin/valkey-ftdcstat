@@ -47,9 +47,6 @@ func Report(w io.Writer, report derive.Report, opts DisplayOptions) error {
 	}
 	fmt.Fprintln(w)
 
-	if report.View == "commandstats" {
-		return renderCommands(w, report.Commands)
-	}
 	if report.LatencyNote != "" {
 		fmt.Fprintf(w, "note: %s\n\n", report.LatencyNote)
 	}
@@ -245,18 +242,6 @@ func renderHostSection(w io.Writer, hostInfo map[string]any) {
 	if available > 0 || total > 0 {
 		fmt.Fprintf(w, "  memory: %s available / %s total\n", formatBinaryMB(available), formatBinaryMB(total))
 	}
-}
-
-func renderCommands(w io.Writer, rows []derive.CommandRow) error {
-	if len(rows) == 0 {
-		_, err := fmt.Fprintln(w, "no commandstats deltas")
-		return err
-	}
-	fmt.Fprintf(w, "%-16s %10s %10s %12s %8s\n", "command", "calls", "calls/s", "usec/call", "share%")
-	for _, row := range rows {
-		fmt.Fprintf(w, "%-16s %10.0f %10.2f %12.2f %8.2f\n", row.Command, row.Calls, row.CallsPerSec, row.UsecPerCall, row.SharePct)
-	}
-	return nil
 }
 
 func orderedColumns(rows []derive.Row, preferred []string) []string {
