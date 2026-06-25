@@ -19,6 +19,7 @@ const magic = "VKFTDC1"
 
 type StreamOptions struct {
 	TimeRange model.TimeRange
+	Flatten   flatten.Options
 }
 
 type SampleSink func(model.MetricSample) error
@@ -165,13 +166,18 @@ func streamMetricsFile(file discovery.MetricFile, opts StreamOptions, emit func(
 		if len(line) == 0 {
 			continue
 		}
+		if !opts.TimeRange.IsZero() {
+			if ts, ok := sampleTimestamp(line); ok && !opts.TimeRange.Contains(ts) {
+				continue
+			}
+		}
 		var sample model.Sample
 		dec := json.NewDecoder(bytes.NewReader(line))
 		dec.UseNumber()
 		if err := dec.Decode(&sample); err != nil {
 			return warnings, fmt.Errorf("decode sample %s: %w", file.Path, err)
 		}
-		flat := flatten.Sample(sample, file.Path, index)
+		flat := flatten.SampleWithOptions(sample, file.Path, index, opts.Flatten)
 		index++
 		if flat.Time.IsZero() {
 			warnings = append(warnings, model.Warning{Source: file.Path, Message: "sample without timestamp skipped"})

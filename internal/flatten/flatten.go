@@ -15,6 +15,10 @@ const (
 
 // Sample converts a decoded capture sample into a flattened MetricSample.
 func Sample(sample model.Sample, source string, sourceIndex int) model.MetricSample {
+	return SampleWithOptions(sample, source, sourceIndex, Options{})
+}
+
+func SampleWithOptions(sample model.Sample, source string, sourceIndex int, opts Options) model.MetricSample {
 	out := model.MetricSample{
 		Time:        sample.Time(),
 		Source:      source,
@@ -29,11 +33,17 @@ func Sample(sample model.Sample, source string, sourceIndex int) model.MetricSam
 	flattenMap(out, pathValkeyInfo+"server.", sample.Valkey.Info.Server)
 	flattenMap(out, pathValkeyInfo+"clients.", sample.Valkey.Info.Clients)
 	flattenMap(out, pathValkeyInfo+"memory.", sample.Valkey.Info.Memory)
-	flattenMap(out, pathValkeyInfo+"persistence.", sample.Valkey.Info.Persistence)
 	flattenMap(out, pathValkeyInfo+"stats.", sample.Valkey.Info.Stats)
 	flattenMap(out, pathValkeyInfo+"replication.", sample.Valkey.Info.Replication)
-	flattenMap(out, pathValkeyInfo+"cpu.", sample.Valkey.Info.CPU)
-	flattenMap(out, pathValkeyInfo+"cluster.", sample.Valkey.Info.Cluster)
+	if !opts.SkipPersistence {
+		flattenMap(out, pathValkeyInfo+"persistence.", sample.Valkey.Info.Persistence)
+	}
+	if !opts.SkipValkeyCPU {
+		flattenMap(out, pathValkeyInfo+"cpu.", sample.Valkey.Info.CPU)
+	}
+	if !opts.SkipCluster {
+		flattenMap(out, pathValkeyInfo+"cluster.", sample.Valkey.Info.Cluster)
+	}
 
 	for name, cmd := range sample.Valkey.Info.Commandstats {
 		base := pathValkeyInfo + "commandstats." + name + "."
@@ -42,27 +52,31 @@ func Sample(sample model.Sample, source string, sourceIndex int) model.MetricSam
 		putFloat(out, base+"usec_per_call", cmd.UsecPerCall)
 	}
 
-	for _, event := range sample.Valkey.LatencyLatest {
-		if event.Event == "" {
-			continue
+	if opts.IncludeLatency {
+		for _, event := range sample.Valkey.LatencyLatest {
+			if event.Event == "" {
+				continue
+			}
+			base := pathValkey + "latency_latest." + event.Event + "."
+			putFloat(out, base+"latest_ms", event.LatestMS)
+			putFloat(out, base+"max_ms", event.MaxMS)
+			putFloat(out, base+"all_time_ms", event.AllTimeMS)
 		}
-		base := pathValkey + "latency_latest." + event.Event + "."
-		putFloat(out, base+"latest_ms", event.LatestMS)
-		putFloat(out, base+"max_ms", event.MaxMS)
-		putFloat(out, base+"all_time_ms", event.AllTimeMS)
 	}
 
 	putFloat(out, pathValkey+"slowlog.len", sample.Valkey.Slowlog.Len)
-	var slowMaxUSec float64
-	for _, entry := range sample.Valkey.Slowlog.Entries {
-		if entry.DurationUSec > slowMaxUSec {
-			slowMaxUSec = entry.DurationUSec
+	if opts.IncludeSlowlogEntries {
+		var slowMaxUSec float64
+		for _, entry := range sample.Valkey.Slowlog.Entries {
+			if entry.DurationUSec > slowMaxUSec {
+				slowMaxUSec = entry.DurationUSec
+			}
 		}
+		if slowMaxUSec > 0 {
+			putFloat(out, pathValkey+"slowlog.max_ms", slowMaxUSec/1000.0)
+		}
+		out.SlowlogEntries = append([]model.SlowlogItem(nil), sample.Valkey.Slowlog.Entries...)
 	}
-	if slowMaxUSec > 0 {
-		putFloat(out, pathValkey+"slowlog.max_ms", slowMaxUSec/1000.0)
-	}
-	out.SlowlogEntries = append([]model.SlowlogItem(nil), sample.Valkey.Slowlog.Entries...)
 
 	host := sample.Host
 	if host.Supported || host.Enabled || len(host.CPU) > 0 || host.Disk.Diskstats != "" {
@@ -79,29 +93,33 @@ func Sample(sample model.Sample, source string, sourceIndex int) model.MetricSam
 		}
 	}
 
-	if host.Disk.Diskstats != "" {
+	if !opts.SkipHostDisk && host.Disk.Diskstats != "" {
 		out.Text[pathHost+"disk.diskstats"] = host.Disk.Diskstats
 	}
-	if host.Network.NetDev != "" {
+	if !opts.SkipHostNetwork && host.Network.NetDev != "" {
 		out.Text[pathHost+"network.net_dev"] = host.Network.NetDev
 	}
 
-	for key, value := range host.Process.Status {
-		path := pathHost + "process.status." + key
-		out.Text[path] = value
-		if strings.HasPrefix(key, "Vm") || strings.Contains(key, "_bytes") {
-			if bytes := model.ParseKBBytes(value); bytes > 0 || strings.Contains(value, "kB") {
-				putFloat(out, path+".bytes", bytes)
+	if !opts.SkipProcessStatus {
+		for key, value := range host.Process.Status {
+			path := pathHost + "process.status." + key
+			out.Text[path] = value
+			if strings.HasPrefix(key, "Vm") || strings.Contains(key, "_bytes") {
+				if bytes := model.ParseKBBytes(value); bytes > 0 || strings.Contains(value, "kB") {
+					putFloat(out, path+".bytes", bytes)
+				}
+			}
+			if key == "voluntary_ctxt_switches" || key == "nonvoluntary_ctxt_switches" {
+				putFloat(out, path, model.AsFloat(value))
 			}
 		}
-		if key == "voluntary_ctxt_switches" || key == "nonvoluntary_ctxt_switches" {
+	}
+	if !opts.SkipProcessIO {
+		for key, value := range host.Process.IO {
+			path := pathHost + "process.io." + key
+			out.Text[path] = value
 			putFloat(out, path, model.AsFloat(value))
 		}
-	}
-	for key, value := range host.Process.IO {
-		path := pathHost + "process.io." + key
-		out.Text[path] = value
-		putFloat(out, path, model.AsFloat(value))
 	}
 
 	if role := model.Text(sample.Valkey.Info.Replication, "role"); role != "" {

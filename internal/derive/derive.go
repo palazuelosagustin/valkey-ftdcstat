@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"valkey-ftdcstat/internal/discovery"
+	"valkey-ftdcstat/internal/flatten"
 	"valkey-ftdcstat/internal/model"
 	"valkey-ftdcstat/internal/reader"
 )
@@ -101,6 +102,30 @@ type CommandRow struct {
 	SharePct    float64 `json:"sharePct"`
 }
 
+type sampleStats struct {
+	count          int
+	first          model.MetricSample
+	last           model.MetricSample
+	haveFirst      bool
+	slowlogSamples []model.MetricSample
+}
+
+func retainAllSamples(view string) bool {
+	return view == "slowlog"
+}
+
+func (s *sampleStats) observe(sample model.MetricSample, retainAll bool) {
+	s.count++
+	if !s.haveFirst {
+		s.first = sample
+		s.haveFirst = true
+	}
+	s.last = sample
+	if retainAll {
+		s.slowlogSamples = append(s.slowlogSamples, sample)
+	}
+}
+
 func Build(capture model.Capture, opts Options) (Report, error) {
 	if len(capture.MetricSamples) == 0 {
 		return Report{}, fmt.Errorf("no samples found")
@@ -113,17 +138,11 @@ func BuildStream(path string, files []discovery.MetricFile, metadata model.Metad
 	opts = normalizeOptions(opts, metadata)
 	streamer := NewStreamer(opts)
 	var rows []Row
-	var samples []model.MetricSample
-	var first, last model.MetricSample
-	var haveFirst bool
+	var stats sampleStats
+	retainAll := retainAllSamples(opts.View)
 
 	err := stream(func(sample model.MetricSample) error {
-		samples = append(samples, sample)
-		if !haveFirst {
-			first = sample
-			haveFirst = true
-		}
-		last = sample
+		stats.observe(sample, retainAll)
 		if row, ok := streamer.Add(sample); ok {
 			rows = append(rows, row)
 		}
@@ -132,27 +151,24 @@ func BuildStream(path string, files []discovery.MetricFile, metadata model.Metad
 	if err != nil {
 		return Report{}, err
 	}
-	if len(samples) == 0 {
+	if stats.count == 0 {
 		return Report{}, fmt.Errorf("no samples found")
 	}
-	return finalizeReport(path, filePaths(files), metadata, samples, first, last, rows, opts, streamer)
+	return finalizeReport(path, filePaths(files), metadata, stats, rows, opts, streamer)
 }
 
 func BuildFromReader(path string, files []discovery.MetricFile, metadata model.Metadata, opts Options, streamOpts reader.StreamOptions) (Report, error) {
 	opts = normalizeOptions(opts, metadata)
+	if streamOpts.Flatten == (flatten.Options{}) {
+		streamOpts.Flatten = flatten.OptionsForView(opts.View, opts.Verbose)
+	}
 	var rows []Row
-	var samples []model.MetricSample
-	var first, last model.MetricSample
-	var haveFirst bool
+	var stats sampleStats
+	retainAll := retainAllSamples(opts.View)
 	streamer := NewStreamer(opts)
 
 	_, streamWarnings, err := reader.StreamSamples(files, streamOpts, func(sample model.MetricSample) error {
-		samples = append(samples, sample)
-		if !haveFirst {
-			first = sample
-			haveFirst = true
-		}
-		last = sample
+		stats.observe(sample, retainAll)
 		if row, ok := streamer.Add(sample); ok {
 			rows = append(rows, row)
 		}
@@ -162,10 +178,10 @@ func BuildFromReader(path string, files []discovery.MetricFile, metadata model.M
 		return Report{}, err
 	}
 	_ = streamWarnings
-	if len(samples) == 0 {
+	if stats.count == 0 {
 		return Report{}, fmt.Errorf("no samples found")
 	}
-	return finalizeReport(path, filePaths(files), metadata, samples, first, last, rows, opts, streamer)
+	return finalizeReport(path, filePaths(files), metadata, stats, rows, opts, streamer)
 }
 
 func buildFromSamples(path string, files []string, metadata model.Metadata, samples []model.MetricSample, opts Options) (Report, error) {
@@ -176,24 +192,30 @@ func buildFromSamples(path string, files []string, metadata model.Metadata, samp
 			rows = append(rows, row)
 		}
 	}
-	return finalizeReport(path, files, metadata, samples, samples[0], samples[len(samples)-1], rows, opts, streamer)
+	return finalizeReport(path, files, metadata, sampleStats{
+		count:          len(samples),
+		first:          samples[0],
+		last:           samples[len(samples)-1],
+		haveFirst:      true,
+		slowlogSamples: append([]model.MetricSample(nil), samples...),
+	}, rows, opts, streamer)
 }
 
-func finalizeReport(path string, files []string, metadata model.Metadata, samples []model.MetricSample, first, last model.MetricSample, rows []Row, opts Options, streamer *Streamer) (Report, error) {
+func finalizeReport(path string, files []string, metadata model.Metadata, stats sampleStats, rows []Row, opts Options, streamer *Streamer) (Report, error) {
 	report := Report{
 		View:        opts.View,
 		Path:        path,
 		Files:       append([]string(nil), files...),
-		SampleCount: len(samples),
-		Start:       samples[0].Time,
-		End:         samples[len(samples)-1].Time,
+		SampleCount: stats.count,
+		Start:       stats.first.Time,
+		End:         stats.last.Time,
 		Metadata:    metadata,
-		Header:      buildHeader(last, metadata),
+		Header:      buildHeader(stats.last, metadata),
 	}
-	topCommands := topCommandNames(first, last, normalizeTopCommands(opts.TopCommands))
+	topCommands := topCommandNames(stats.first, stats.last, normalizeTopCommands(opts.TopCommands))
 	switch opts.View {
 	case "slowlog":
-		slowRows, summary, note := deriveSlowlog(samples, normalizeSlowlogTop(opts.TopCommands), report.Header.ModuleConfig)
+		slowRows, summary, note := deriveSlowlog(stats.slowlogSamples, normalizeSlowlogTop(opts.TopCommands), report.Header.ModuleConfig)
 		report.Slowlog = slowRows
 		report.SlowlogSummary = summary
 		report.SlowlogNote = note
@@ -214,7 +236,7 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 	default:
 		switch opts.View {
 		case "summary":
-			report.Columns = summaryColumns(topCommands, replicaOffsetColumns(first, last))
+			report.Columns = summaryColumns(topCommands, replicaOffsetColumns(stats.first, stats.last))
 		case "commandstats":
 			report.Columns = commandstatsColumns(topCommands)
 		default:
@@ -222,9 +244,9 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 		}
 	}
 	report.Rows = rows
-	report.Latest = latestMap(last, opts.View)
+	report.Latest = latestMap(stats.last, opts.View)
 	if len(topCommands) > 0 {
-		report.Commands = deriveCommands(first, last)
+		report.Commands = deriveCommands(stats.first, stats.last)
 		if limit := normalizeTopCommands(opts.TopCommands); limit > 0 && len(report.Commands) > limit {
 			report.Commands = append([]CommandRow(nil), report.Commands[:limit]...)
 		}

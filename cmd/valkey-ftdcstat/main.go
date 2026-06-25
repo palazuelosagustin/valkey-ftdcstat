@@ -12,6 +12,7 @@ import (
 	"valkey-ftdcstat/internal/aggregate"
 	"valkey-ftdcstat/internal/derive"
 	"valkey-ftdcstat/internal/discovery"
+	"valkey-ftdcstat/internal/flatten"
 	"valkey-ftdcstat/internal/model"
 	"valkey-ftdcstat/internal/reader"
 	"valkey-ftdcstat/internal/render"
@@ -60,7 +61,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "warning:", warning.String())
 	}
 
-	streamOpts := reader.StreamOptions{TimeRange: opts.Range}
+	streamOpts := reader.StreamOptions{
+		TimeRange: opts.Range,
+		Flatten:   flatten.OptionsForView(opts.View, opts.Verbose),
+	}
 	deriveOpts := derive.Options{
 		View:         opts.View,
 		Interval:     time.Duration(opts.Interval) * time.Second,
