@@ -32,12 +32,13 @@ func TestTopologyNodesIncludesLocalAndReplicas(t *testing.T) {
 	sample.Text["valkey.info.replication.slave0.ip"] = "10.0.0.2"
 	sample.Text["valkey.info.replication.slave1.ip"] = "10.0.0.3"
 	sample.Text["valkey.info.server.listener1.bind"] = "10.0.0.1"
+	sample.Values["valkey.info.server.tcp_port"] = 6379
 
 	nodes := topologyNodes(sample, "/data/node0/diagnostic.data")
 	want := map[string]string{
-		"node0": "10.0.0.1",
-		"node1": "10.0.0.2",
-		"node3": "10.0.0.3",
+		"node0": "10.0.0.1:6379",
+		"node1": "10.0.0.2:6001",
+		"node3": "10.0.0.3:6002",
 	}
 	if !reflect.DeepEqual(nodes, want) {
 		t.Fatalf("nodes=%v want=%v", nodes, want)

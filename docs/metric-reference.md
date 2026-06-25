@@ -106,6 +106,8 @@ Command columns (`get/s`, `info/s`, …) are ranked by total call delta over the
 | `role` | text | local replication role | `valkey.info.replication.role` |
 | `<replica>` | gauge | replica replication offset | `valkey.info.replication.slaveN.offset` (column name = replica `name`) |
 
+Topology header `nodes` entries use `ip:port` from the local listener/`tcp_port` and each replica's `slaveN.ip`/`slaveN.port`.
+
 ### Commands
 
 | Column | Type | Formula | Source path(s) |

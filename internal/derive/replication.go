@@ -1,6 +1,7 @@
 package derive
 
 import (
+	"fmt"
 	"net"
 	"path/filepath"
 	"sort"
@@ -15,6 +16,7 @@ const replInfoPrefix = "valkey.info.replication."
 type Replica struct {
 	Name       string
 	IP         string
+	Port       int
 	OffsetPath string
 }
 
@@ -38,11 +40,16 @@ func replicasFromSample(sample model.MetricSample) []Replica {
 
 	for path := range sample.Values {
 		key, field, ok := replicaField(path)
-		if !ok || field != "offset" {
+		if !ok {
 			continue
 		}
 		rep := replicaForKey(byKey, indexFor, key)
-		rep.OffsetPath = path
+		switch field {
+		case "offset":
+			rep.OffsetPath = path
+		case "port":
+			rep.Port = int(sample.Values[path])
+		}
 	}
 
 	keys := make([]string, 0, len(byKey))
@@ -94,15 +101,15 @@ func replicaNamesFromSample(sample model.MetricSample) []string {
 func topologyNodes(sample model.MetricSample, capturePath string) map[string]string {
 	nodes := map[string]string{}
 	if name := localNodeName(capturePath); name != "" {
-		if ip := localNodeIP(sample); ip != "" {
-			nodes[name] = ip
+		if addr := localNodeAddr(sample); addr != "" {
+			nodes[name] = addr
 		}
 	}
 	for _, rep := range replicasFromSample(sample) {
 		if rep.Name == "" || rep.IP == "" {
 			continue
 		}
-		nodes[rep.Name] = rep.IP
+		nodes[rep.Name] = formatNodeAddr(rep.IP, rep.Port)
 	}
 	if len(nodes) == 0 {
 		return nil
@@ -167,29 +174,58 @@ func localNodeName(capturePath string) string {
 	return dir
 }
 
-func localNodeIP(sample model.MetricSample) string {
+func localNodeAddr(sample model.MetricSample) string {
+	ip, port := localNodeIPPort(sample)
+	return formatNodeAddr(ip, port)
+}
+
+func localNodeIPPort(sample model.MetricSample) (string, int) {
+	var ip string
+	var port int
 	for path, value := range sample.Text {
 		if !strings.Contains(path, ".listener") || !strings.HasSuffix(path, ".bind") {
 			continue
 		}
-		if ip := parseBindIP(value); ip != "" {
-			return ip
+		bindIP, bindPort := parseBindHostPort(value)
+		if bindIP != "" {
+			ip = bindIP
+			port = bindPort
+			break
 		}
 	}
-	return ""
+	if port == 0 {
+		if v, ok := sample.Get("valkey.info.server.tcp_port"); ok && v > 0 {
+			port = int(v)
+		}
+	}
+	return ip, port
 }
 
-func parseBindIP(bind string) string {
-	bind = strings.TrimSpace(bind)
-	if bind == "" || strings.HasPrefix(bind, "/") {
+func formatNodeAddr(ip string, port int) string {
+	if ip == "" {
 		return ""
 	}
+	if port > 0 {
+		return fmt.Sprintf("%s:%d", ip, port)
+	}
+	return ip
+}
+
+func parseBindHostPort(bind string) (string, int) {
+	bind = strings.TrimSpace(bind)
+	if bind == "" || strings.HasPrefix(bind, "/") {
+		return "", 0
+	}
 	host := bind
-	if h, _, ok := strings.Cut(bind, ":"); ok {
+	port := 0
+	if h, p, ok := strings.Cut(bind, ":"); ok {
 		host = h
+		if n, err := strconv.Atoi(p); err == nil {
+			port = n
+		}
 	}
 	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
-		return ip.String()
+		return ip.String(), port
 	}
-	return ""
+	return "", 0
 }

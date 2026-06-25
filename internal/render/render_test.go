@@ -46,9 +46,9 @@ func TestReportRendersCompactHeader(t *testing.T) {
 				"replicas":       2.0,
 				"clusterEnabled": false,
 				"nodes": map[string]string{
-					"node0": "10.0.0.1",
-					"node1": "10.0.0.2",
-					"node3": "10.0.0.3",
+					"node0": "10.0.0.1:6379",
+					"node1": "10.0.0.2:6001",
+					"node3": "10.0.0.3:6002",
 				},
 			},
 		},
@@ -70,9 +70,9 @@ func TestReportRendersCompactHeader(t *testing.T) {
 		"redis_version: 7.2.4 compatibility",
 		"role: primary",
 		"replicas: 2",
-		"node0: 10.0.0.1",
-		"node1: 10.0.0.2",
-		"node3: 10.0.0.3",
+		"node0: 10.0.0.1:6379",
+		"node1: 10.0.0.2:6001",
+		"node3: 10.0.0.3:6002",
 		"hostInfo:",
 	}
 	for _, check := range checks {
