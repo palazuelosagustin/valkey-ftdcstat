@@ -230,7 +230,7 @@ func columnSet(columns []string) map[string]bool {
 }
 
 func metricFormat(column string) string {
-	if strings.HasSuffix(column, "%") || column == "repl" || column == "role" || column == "rdb" || column == "aof" {
+	if strings.HasSuffix(column, "%") || column == "role" || column == "rdb" || column == "aof" {
 		return "text"
 	}
 	return "number"
@@ -240,7 +240,7 @@ func defaultMetric(view, column string) bool {
 	switch view {
 	case "summary":
 		switch column {
-		case "ops/s", "hit%", "memMB", "cli", "load1", "inKB/s", "outKB/s", "repl":
+		case "ops/s", "hit%", "memMB", "cli", "load1", "inKB/s", "outKB/s", "role":
 			return true
 		}
 	case "host":

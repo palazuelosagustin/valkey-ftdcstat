@@ -27,8 +27,8 @@ func TestBuildSummaryRows(t *testing.T) {
 	if row.Values["conn/s"] != float64(2) {
 		t.Fatalf("conn/s=%v", row.Values["conn/s"])
 	}
-	if row.Values["repl"] != "master" {
-		t.Fatalf("repl=%v", row.Values["repl"])
+	if row.Values["role"] != "master" {
+		t.Fatalf("role=%v", row.Values["role"])
 	}
 }
 

@@ -23,7 +23,7 @@ hostInfo:
   os: Linux 6.8.0-110-generic x86_64
   memory: 28.3 GiB available / 31.3 GiB total
 
-                     |      server       |               commands                |      memory       |                   stats                    | clients | replication  |               host
-datetime             | ops/s conn/s hit% | info/s latency|latest/s slowlog|len/s | memMB rssMB frag% | rej/s exp/s evict/s offKB/s inKB/s outKB/s | cli blk | repl   repls | us%  sy%  id%  wa% load1 availMB 
+                     |      server       |               commands                |      memory       |                   stats                    | clients | replication |               host
+datetime             | ops/s conn/s hit% | info/s latency|latest/s slowlog|len/s | memMB rssMB frag% | rej/s exp/s evict/s offKB/s inKB/s outKB/s | cli blk | role        | us%  sy%  id%  wa% load1 availMB 
 --- valkey process: pid=831891 run_id=- time=2026-06-20T11:59:12Z ---
-2026-06-20T11:59:12Z | 54.19      -    - |  44.33                -             - |  0.98    14 14.31 |     -     -       -       -      -       - |   -   - | master     - | 3.09 0.62 96.3   0  0.84 28993.98
+2026-06-20T11:59:12Z | 54.19      -    - |  44.33                -             - |  0.98    14 14.31 |     -     -       -       -      -       - |   -   - | master      | 3.09 0.62 96.3   0  0.84 28993.98

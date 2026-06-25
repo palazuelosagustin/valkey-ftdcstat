@@ -57,7 +57,7 @@ Terminal and web output include:
 
 - **capture** — raw sample count and time span (`path`, `files`, `samples`, `range`).
 - **metricsRange** — first/last **derived row** timestamps after filters and interval spacing.
-- **serverInfo** — Valkey version, topology, `hz`, `maxclients`, build/git details.
+- **serverInfo** — Valkey version, topology (`role`, `replicas`, `cluster`, `nodes`), `hz`, `maxclients`, build/git details.
 - **moduleConfig** — collector settings when present in metadata.
 - **hostInfo** — OS and memory summary when host stats are collected.
 
@@ -73,7 +73,7 @@ After a gap or restart, **rate columns are omitted** for that row; gauges still 
 
 - `0` — present and zero.
 - `-` — missing, unavailable, not computable, zero denominator, or rate suppressed after gap/restart.
-- JSON uses `null` for missing numeric values; string gauges like `repl`/`role` may be absent.
+- JSON uses `null` for missing numeric values; string gauges like `role` may be absent.
 - Rates and percentages: typically one decimal place.
 - Memory MiB columns: one decimal place.
 
@@ -103,6 +103,8 @@ Command columns (`get/s`, `info/s`, …) are ranked by total call delta over the
 | `inKB/s` | gauge | instantaneous input kbps | `valkey.info.stats.instantaneous_input_kbps` |
 | `outKB/s` | gauge | instantaneous output kbps | `valkey.info.stats.instantaneous_output_kbps` |
 | `offKB/s` | rate | Δ`master_repl_offset` / Δt / 1024 | `valkey.info.replication.master_repl_offset` |
+| `role` | text | local replication role | `valkey.info.replication.role` |
+| `<replica>` | gauge | replica replication offset | `valkey.info.replication.slaveN.offset` (column name = replica `name`) |
 
 ### Commands
 
@@ -138,8 +140,8 @@ Display names strip the `cmdstat_` prefix (`cmdstat_get` → `get/s`).
 
 | Column | Type | Source path(s) |
 |--------|------|----------------|
-| `repl` / `role` | text | `valkey.info.replication.role` |
-| `repls` / `replicas` | gauge | `valkey.info.replication.connected_slaves` |
+| `role` | text | `valkey.info.replication.role` |
+| `replicas` | gauge | `valkey.info.replication.connected_slaves` (replication view only) |
 | `offsetMB` | gauge | `master_repl_offset` / 1024² |
 | `offMB/s` | rate | Δ offset / Δt / 1024² |
 | `backlog` | text | `repl_backlog_active` (yes/no) |
@@ -257,7 +259,7 @@ API:
 | Command hot spots | `summary` commands section, `--view commandstats` |
 | Memory pressure | `memMB`, `frag%`, `exp/s`, `evict/s` |
 | Client pile-up | `cli`, `blk`, `conn/s`, `rej/s` |
-| Replication lag | `offKB/s`, `offsetMB`, `repls` |
+| Replication lag | `offKB/s`, summary replica offset columns, `offsetMB` |
 | Disk bottleneck | `host` view `bi`/`bo`, `wa%` |
 | Event-loop stalls | `latency` view `eloopUs`, LATENCY events |
 | Slow commands building up | `--view slowlog`, or `latency.slowlog` / `slowMaxMs` gauges |

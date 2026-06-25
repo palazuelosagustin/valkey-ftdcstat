@@ -208,7 +208,19 @@ func baseColumnWidths(cols []string) []int {
 	for i, cell := range header {
 		out[i] = len(cell)
 	}
+	if idx := columnIndex(cols, "role"); idx >= 0 && out[idx] < len("replication") {
+		out[idx] = len("replication")
+	}
 	return out
+}
+
+func columnIndex(cols []string, name string) int {
+	for i, col := range cols {
+		if col == name {
+			return i
+		}
+	}
+	return -1
 }
 
 func growColumnWidths(widths []int, line []string) {

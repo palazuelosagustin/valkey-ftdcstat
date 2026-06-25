@@ -71,7 +71,7 @@ func commandstatsColumns(commands []string) []string {
 	return cols
 }
 
-func summaryColumns(topCommands []string) []string {
+func summaryColumns(topCommands []string, replicaOffsets []string) []string {
 	cols := []string{
 		"time",
 		"ops/s", "conn/s", "hit%",
@@ -83,7 +83,10 @@ func summaryColumns(topCommands []string) []string {
 		"memMB", "rssMB", "frag%",
 		"rej/s", "exp/s", "evict/s", "offKB/s", "inKB/s", "outKB/s",
 		"cli", "blk",
-		"repl", "repls",
+		"role",
+	)
+	cols = append(cols, replicaOffsets...)
+	cols = append(cols,
 		"us%", "sy%", "id%", "wa%", "load1", "availMB",
 	)
 	return cols

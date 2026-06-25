@@ -1,7 +1,6 @@
 package derive
 
 import (
-	"sort"
 	"strings"
 
 	"valkey-ftdcstat/internal/model"
@@ -24,7 +23,7 @@ func buildHeader(sample model.MetricSample, metadata model.Metadata) model.Heade
 	return model.Header{
 		HostInfo:        buildHostInfo(sample),
 		BuildInfo:       buildInfo,
-		ReplicationInfo: buildReplicationInfo(sample),
+		ReplicationInfo: buildReplicationInfo(sample, metadata.Path),
 		ModuleConfig:    buildModuleConfig(metadata),
 	}
 }
@@ -124,7 +123,7 @@ func buildBuildInfo(sample model.MetricSample) map[string]any {
 	return info
 }
 
-func buildReplicationInfo(sample model.MetricSample) map[string]any {
+func buildReplicationInfo(sample model.MetricSample, capturePath string) map[string]any {
 	info := map[string]any{}
 	putHeaderText(info, "role", sample.GetText(pathReplRole))
 	if v, ok := sample.Get(pathReplSlaves); ok {
@@ -136,21 +135,13 @@ func buildReplicationInfo(sample model.MetricSample) map[string]any {
 	if names := replicaNamesFromSample(sample); len(names) > 0 {
 		info["replicaNames"] = names
 	}
+	if nodes := topologyNodes(sample, capturePath); len(nodes) > 0 {
+		info["nodes"] = nodes
+	}
 	if len(info) == 0 {
 		return nil
 	}
 	return info
-}
-
-func replicaNamesFromSample(sample model.MetricSample) []string {
-	var names []string
-	for path, value := range sample.Text {
-		if (strings.Contains(path, ".slave") || strings.Contains(path, ".replica")) && strings.HasSuffix(path, ".name") && value != "" {
-			names = append(names, value)
-		}
-	}
-	sort.Strings(names)
-	return names
 }
 
 func putHeaderText(dst map[string]any, key, value string) {

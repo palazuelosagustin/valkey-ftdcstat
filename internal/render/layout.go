@@ -58,6 +58,7 @@ func singleSectionLayout(name string, columns []string) tableLayout {
 
 func summaryLayout(columns []string) tableLayout {
 	sectionFor := summarySectionForColumn()
+	hostStart := indexOfColumn(columns, "us%")
 	var sections []tableSection
 	var current string
 	var currentStart int
@@ -72,6 +73,9 @@ func summaryLayout(columns []string) tableLayout {
 		name := sectionFor[col]
 		if name == "" && isSummaryCommandColumn(col) {
 			name = "commands"
+		}
+		if name == "" && isSummaryOffsetColumn(columns, i, hostStart) {
+			name = "offset"
 		}
 		if col == "time" {
 			flush(i)
@@ -90,6 +94,26 @@ func summaryLayout(columns []string) tableLayout {
 	}
 	flush(len(columns))
 	return tableLayout{Columns: append([]string(nil), columns...), Sections: sections}
+}
+
+func indexOfColumn(columns []string, name string) int {
+	for i, col := range columns {
+		if col == name {
+			return i
+		}
+	}
+	return -1
+}
+
+func isSummaryOffsetColumn(columns []string, idx, hostStart int) bool {
+	roleIdx := indexOfColumn(columns, "role")
+	if roleIdx < 0 || idx <= roleIdx {
+		return false
+	}
+	if hostStart >= 0 && idx >= hostStart {
+		return false
+	}
+	return columns[idx] != "role"
 }
 
 func isSummaryCommandColumn(column string) bool {
@@ -120,8 +144,7 @@ func summarySectionForColumn() map[string]string {
 		"outKB/s":  "stats",
 		"cli":      "clients",
 		"blk":      "clients",
-		"repl":     "replication",
-		"repls":    "replication",
+		"role":     "replication",
 		"us%":      "host",
 		"sy%":      "host",
 		"id%":      "host",

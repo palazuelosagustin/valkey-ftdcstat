@@ -214,7 +214,7 @@ func finalizeReport(path string, files []string, metadata model.Metadata, sample
 	default:
 		switch opts.View {
 		case "summary":
-			report.Columns = summaryColumns(topCommands)
+			report.Columns = summaryColumns(topCommands, replicaOffsetColumns(first, last))
 		case "commandstats":
 			report.Columns = commandstatsColumns(topCommands)
 		default:
@@ -391,8 +391,8 @@ func fillSummary(row *Row, c calculator, reset bool) {
 	appendHostCPU(row, c)
 	setGauge(row, "load1", c, pathHostLoad1, identity)
 	setGauge(row, "availMB", c, pathHostMemAvail, identity)
-	row.Values["repl"] = c.text(pathReplRole)
-	setGauge(row, "repls", c, pathReplSlaves, identity)
+	row.Values["role"] = c.text(pathReplRole)
+	fillReplicaOffsets(row, c)
 }
 
 func fillServer(row *Row, c calculator, reset bool) {
@@ -709,7 +709,7 @@ func latestMap(sample model.MetricSample, view string) map[string]any {
 	out := map[string]any{"time": sample.Time.Format(time.RFC3339)}
 	switch view {
 	case "summary":
-		out["repl"] = sample.GetText(pathReplRole)
+		out["role"] = sample.GetText(pathReplRole)
 		out["memMB"] = bytesToMB(get(sample, pathMemUsed))
 		out["cli"] = get(sample, pathClientsConn)
 	case "memory":
@@ -876,7 +876,7 @@ func viewColumns(view string, opts Options) []string {
 			"memMB", "rssMB", "frag%",
 			"rej/s", "exp/s", "evict/s", "offKB/s", "inKB/s", "outKB/s",
 			"cli", "blk",
-			"repl", "repls",
+			"role",
 			"us%", "sy%", "id%", "wa%", "load1", "availMB",
 		}
 	case "server":

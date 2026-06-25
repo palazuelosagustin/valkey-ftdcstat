@@ -221,17 +221,20 @@ func renderTopologySection(w io.Writer, replicationInfo map[string]any) {
 	}
 	fmt.Fprintf(w, "    role: %s\n", role)
 	replicas := int(numberValue(replicationInfo, "replicas"))
-	if names := stringSlice(replicationInfo, "replicaNames"); len(names) > 0 {
-		fmt.Fprintf(w, "    replicas: %d (%s)\n", replicas, strings.Join(names, ", "))
-	} else {
-		fmt.Fprintf(w, "    replicas: %d\n", replicas)
-	}
+	fmt.Fprintf(w, "    replicas: %d\n", replicas)
 	clusterEnabled, _ := boolValue(replicationInfo, "clusterEnabled")
 	cluster := "disabled"
 	if clusterEnabled {
 		cluster = "enabled"
 	}
 	fmt.Fprintf(w, "    cluster: %s\n", cluster)
+	if nodes := stringStringMap(replicationInfo, "nodes"); len(nodes) > 0 {
+		fmt.Fprintln(w, "    nodes:")
+		keys := sortedMapKeys(nodes)
+		for _, key := range keys {
+			fmt.Fprintf(w, "      %s: %s\n", key, nodes[key])
+		}
+	}
 }
 
 func renderHostSection(w io.Writer, hostInfo map[string]any) {
@@ -435,4 +438,38 @@ func stringSlice(m map[string]any, key string) []string {
 		}
 	}
 	return out
+}
+
+func stringStringMap(m map[string]any, key string) map[string]string {
+	if m == nil {
+		return nil
+	}
+	value, ok := m[key].(map[string]string)
+	if ok {
+		return value
+	}
+	raw, ok := m[key].(map[string]any)
+	if !ok {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		text := fmt.Sprint(v)
+		if text != "" {
+			out[k] = text
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func sortedMapKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
